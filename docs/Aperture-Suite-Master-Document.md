@@ -56,10 +56,10 @@ There are two paths to booking:
 - Same automation kicks in from that point: contract sent, invoices generated, confirmation email, calendar entry, workflow triggers
 
 **Invoicing rules (apply to both paths):**
-- If package requires deposit → Deposit invoice `INV-0001-DEP` sent immediately on booking (due on receipt) + Final invoice `INV-0001-FIN` sent with due date automatically set to 14 days before the shoot date
-- If no deposit (pay in full) → Single invoice `INV-0001` sent with due date automatically set to 14 days before the shoot date
+- If package requires deposit → Deposit invoice `INV-0001-DEP` sent immediately on booking (due on receipt) + Final invoice `INV-0001-FIN` created on booking, auto-sent 28 days before shoot date, with due date set to 14 days before shoot date
+- If no deposit (pay in full) → Single invoice `INV-0001` created on booking, auto-sent 28 days before shoot date, with due date set to 14 days before shoot date
 - **Payment happens separately** when the client pays their invoice(s) — not at the quoting/booking stage
-- Overdue invoice reminders sent automatically at configurable intervals
+- Overdue invoice reminders sent automatically at configurable intervals after the due date
 
 ### Stage 4: Pre-Shoot
 - **7 days before:** Auto-email to client with shoot prep tips, location details, what to wear suggestions
@@ -232,7 +232,54 @@ There are two paths to booking:
 
 ---
 
-## 6. File Structure
+## 6. Critical Development Rules
+
+**These rules exist because we hit painful build failures. Follow them every time.**
+
+### Rule 1: types.ts is the single source of truth
+- `apps/web/lib/types.ts` defines the shape of every data type (Job, Invoice, Client, Lead, etc.)
+- `apps/web/lib/queries.ts` function signatures MUST match the field names in types.ts
+- Page components pass data to queries functions — the fields they pass must exist in the function signature
+- **Chain of truth:** `types.ts` → `queries.ts` function params → `page.tsx` create/update calls
+- Before writing any create/update function, check the type definition first
+
+### Rule 2: queries.ts functions handle photographer_id internally
+- Every create function (`createNewClient`, `createLead`, `createJob`, `createInvoice`) calls `getCurrentPhotographer()` internally and adds `photographer_id` to the insert
+- **NEVER pass `photographer_id` from a page component** — it will cause a TypeScript error because it's not in the function's param type
+- If a page needs the photographer ID for display purposes, fetch it separately via `getCurrentPhotographer()`
+
+### Rule 3: Field name mapping (types.ts ↔ database)
+These are the actual field names. Do not invent alternatives:
+
+| Type | Field | NOT this |
+|------|-------|----------|
+| Job | `date` | ~~shoot_date~~ |
+| Job | `title` (optional) | ~~title (required)~~ |
+| Invoice | `amount` | ~~subtotal~~ |
+| Invoice | `tax` | ~~tax_amount~~ |
+| Invoice | `currency` | (don't omit) |
+| Lead | `location` | (don't omit from createLead) |
+
+### Rule 4: RLS policies need WITH CHECK for INSERT
+- Supabase `FOR ALL USING (...)` covers SELECT/UPDATE/DELETE but NOT INSERT
+- INSERT requires separate `FOR INSERT WITH CHECK (...)`
+- Migration `20260214000005_fix_rls_policies.sql` fixed this — don't revert to `FOR ALL`
+
+### Rule 5: Always run `npx next build` before pushing
+- TypeScript strict mode catches field mismatches at build time
+- `npm run dev` does NOT catch these — it uses loose compilation
+- Never push code that hasn't passed `npx next build`
+
+### Rule 6: When editing queries.ts or types.ts
+1. Check `types.ts` for the interface definition
+2. Update `queries.ts` function params to match exactly
+3. Check every page that calls the function — ensure fields match
+4. Run `npx next build` to verify
+5. Only then push
+
+---
+
+## 7. File Structure
 
 ```
 aperture-suite/
@@ -306,7 +353,9 @@ aperture-suite/
 │       ├── 20260213000000_initial_schema.sql
 │       ├── 20260214000001_add_invoice_type.sql
 │       ├── 20260214000002_add_job_number.sql
-│       └── 20260214000003_add_job_time.sql
+│       ├── 20260214000003_add_job_time.sql
+│       ├── 20260214000004_job_number_counter.sql
+│       └── 20260214000005_fix_rls_policies.sql
 ├── docs/
 │   └── Aperture-Suite-Master-Document.md
 ├── packages/shared/                  # Shared types/constants
@@ -316,7 +365,7 @@ aperture-suite/
 
 ---
 
-## 7. Competitive Landscape
+## 8. Competitive Landscape
 
 | Feature | Aperture Suite | Studio Ninja | Pic-Time | Aftershoot | Imagen |
 |---------|---------------|-------------|----------|-----------|--------|
@@ -336,7 +385,7 @@ aperture-suite/
 
 ---
 
-## 8. Package & Invoicing System
+## 9. Package & Invoicing System
 
 ### Packages (configured in Settings)
 - Name, price, duration (hours), included images count
@@ -345,8 +394,8 @@ aperture-suite/
 - Changing package duration auto-syncs existing job end times
 
 ### Invoice Flow
-- **Package with deposit:** Creates `INV-{JOB#}-DEP` (25% of package, due immediately) + `INV-{JOB#}-FIN` (75% remaining, due 2 weeks before shoot)
-- **Package without deposit:** Creates `INV-{JOB#}` (full amount, due 2 weeks before shoot)
+- **Package with deposit:** Creates `INV-{JOB#}-DEP` (25% of package, sent immediately on booking, due on receipt) + `INV-{JOB#}-FIN` (75% remaining, auto-sent 28 days before shoot, due 14 days before shoot)
+- **Package without deposit:** Creates `INV-{JOB#}` (full amount, auto-sent 28 days before shoot, due 14 days before shoot)
 - **Custom invoices:** Manual line items for one-off billing
 - Line item editor with qty × price, adjustable GST %
 
@@ -358,7 +407,7 @@ aperture-suite/
 
 ---
 
-## 9. AI Processing Pipeline (6 Phases, 24 Steps)
+## 10. AI Processing Pipeline (6 Phases, 24 Steps)
 
 ### Phase 0 — Image Analysis
 Scene type detection, face detection + counting, quality scoring (exposure, focus, noise, composition), duplicate/burst grouping, EXIF metadata extraction
@@ -393,7 +442,7 @@ For the ~5% of images the AI doesn't get perfect:
 
 ---
 
-## 10. Migration Strategy
+## 11. Migration Strategy
 
 ### Supported Import Sources
 - **Studio Ninja:** CSV export of clients, leads, jobs
@@ -411,7 +460,7 @@ For the ~5% of images the AI doesn't get perfect:
 
 ---
 
-## 11. TODO List (Priority Order)
+## 12. TODO List (Priority Order)
 
 ### High Priority — Core Functionality
 1. File upload infrastructure (Backblaze B2 or Supabase Storage)
@@ -442,7 +491,7 @@ For the ~5% of images the AI doesn't get perfect:
 
 ---
 
-## 12. Deployment & DevOps
+## 13. Deployment & DevOps
 
 ### Local Development
 ```powershell
@@ -467,6 +516,25 @@ git push
 ### Supabase Migrations
 Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `supabase/migrations/` for version control.
 
+**Migrations that MUST be run in Supabase SQL Editor (in order):**
+1. `20260213000000_initial_schema.sql` — Core 14 tables (already run during initial setup)
+2. `20260214000001_add_invoice_type.sql` — `invoice_type` column on invoices
+3. `20260214000002_add_job_number.sql` — `job_number` column on jobs
+4. `20260214000003_add_job_time.sql` — `time` + `end_time` columns on jobs
+5. `20260214000004_job_number_counter.sql` — `next_job_number` on photographers + `increment_job_number()` RPC
+6. `20260214000005_fix_rls_policies.sql` — **Critical:** Proper INSERT policies with `WITH CHECK` for all tables
+
+### Bugs Fixed (14 Feb 2026 Session)
+- **Wrong function imports:** `clients/page.tsx` and `leads/page.tsx` imported `createClient` instead of `createNewClient`
+- **RLS INSERT blocked:** Original policies used `FOR ALL USING(...)` which doesn't cover INSERT — fixed with separate `FOR INSERT WITH CHECK` policies
+- **Dashboard stats mismatch:** Dashboard expected `total_clients` etc. but `getDashboardStats()` returns `totalClients` — aligned field names
+- **photographer_id passed to create functions:** Pages passed `photographer_id` but the functions handle it internally — removed from all pages (clients, leads, jobs, invoices)
+- **Invoice field mismatch:** `createInvoice` used `subtotal/tax_rate/tax_amount` but Invoice type uses `amount/tax/currency` — aligned queries.ts to match types.ts
+- **Job title type error:** `createJob` required `title` as `string` but pages passed `undefined` — made optional
+- **Missing `location` on createLead:** Lead type has `location` but `createLead` params didn't include it — added
+- **`shoot_date` vs `date`:** `getJobs()` and `getDashboardStats()` used `shoot_date` in queries but database column is `date` — caused 400 errors on all job fetches
+- **Missing database columns:** `time`, `end_time`, `job_number`, `next_job_number` columns didn't exist until migrations 2-4 were run
+
 ### Environment Variables (Vercel + .env.local)
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://ibugbyrbjabpveybuqsv.supabase.co
@@ -479,7 +547,7 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 
 ---
 
-## 13. Key Design Decisions
+## 14. Key Design Decisions
 
 - **Monorepo (Turborepo):** Shared types and constants between frontend and AI service
 - **Next.js 14 App Router:** Server components for SEO on public galleries, client components for interactive dashboard

@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Bell, Plus, ChevronDown, LogOut, Menu } from 'lucide-react';
+import { Search, Bell, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -54,7 +54,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   };
 
   return (
-    <header className="flex items-center justify-between h-14 lg:h-16 px-4 lg:px-6 border-b border-white/[0.06] bg-[#07070d]/95 backdrop-blur-md flex-shrink-0 z-30">
+    <header className="flex items-center justify-between h-14 lg:h-16 px-4 lg:px-6 border-b border-white/[0.06] bg-[#07070d]/95 backdrop-blur-md flex-shrink-0 z-30 max-w-full overflow-hidden">
       {/* Left side */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {/* Hamburger — mobile only */}
@@ -86,11 +86,6 @@ export function TopBar({ onMenuClick }: TopBarProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
-        <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors">
-          <Plus className="w-4 h-4" />
-          <span className="hidden sm:inline">New</span>
-        </button>
-
         <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors">
           <Bell className="w-[18px] h-[18px]" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-500 rounded-full" />
