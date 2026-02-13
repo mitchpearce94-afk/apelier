@@ -177,7 +177,6 @@ export default function LeadsPage() {
       const firstName = form.get('new_first_name') as string;
       if (!firstName) { setSaving(false); return; }
       const newClient = await createNewClient({
-        photographer_id: photographerId,
         first_name: firstName,
         last_name: form.get('new_last_name') as string || undefined,
         email: form.get('new_email') as string || undefined,
@@ -190,7 +189,6 @@ export default function LeadsPage() {
     }
 
     const newLead = await createLead({
-      photographer_id: photographerId,
       client_id: clientId || undefined,
       job_type: form.get('job_type') as string || undefined,
       preferred_date: form.get('preferred_date') as string || undefined,

@@ -158,7 +158,6 @@ export default function JobsPage() {
     const form = new FormData(e.currentTarget);
 
     const newJob = await createJob({
-      photographer_id: photographerId,
       client_id: selectedClientId || undefined,
       job_type: form.get('job_type') as string || undefined,
       title: form.get('title') as string || undefined,

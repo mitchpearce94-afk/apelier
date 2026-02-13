@@ -154,7 +154,6 @@ export default function InvoicesPage() {
 
       const depositTax = Math.round(depositAmount * (gst / 100) * 100) / 100;
       const depositInv = await createInvoice({
-        photographer_id: photographerId,
         client_id: job.client_id || undefined,
         job_id: job.id,
         invoice_number: `INV-${jobNum}-DEP`,
@@ -174,7 +173,6 @@ export default function InvoicesPage() {
 
       const finalTax = Math.round(finalAmount * (gst / 100) * 100) / 100;
       const finalInv = await createInvoice({
-        photographer_id: photographerId,
         client_id: job.client_id || undefined,
         job_id: job.id,
         invoice_number: `INV-${jobNum}-FIN`,
@@ -201,7 +199,6 @@ export default function InvoicesPage() {
       const fullDue = job.date ? getTwoWeeksBefore(job.date) : undefined;
       const fullTax = Math.round(packageAmount * (gst / 100) * 100) / 100;
       const fullInv = await createInvoice({
-        photographer_id: photographerId,
         client_id: job.client_id || undefined,
         job_id: job.id,
         invoice_number: `INV-${jobNum}`,
@@ -276,7 +273,6 @@ export default function InvoicesPage() {
     setSaving(true);
 
     const newInvoice = await createInvoice({
-      photographer_id: photographerId,
       client_id: selectedClientId || undefined,
       job_id: selectedJobId || undefined,
       invoice_number: generateInvoiceNumber(selectedJobId || undefined),
