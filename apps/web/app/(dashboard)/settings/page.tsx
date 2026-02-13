@@ -435,7 +435,7 @@ export default function SettingsPage() {
                   <Check className="w-4 h-4 text-emerald-400" />
                   <span className="text-sm text-emerald-300">Updated end times on {syncedJobs} existing job{syncedJobs !== 1 ? 's' : ''}</span>
                 </div>
-              )}}
+              )}
             </div>
           )}
 
