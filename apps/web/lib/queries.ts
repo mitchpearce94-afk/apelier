@@ -164,6 +164,7 @@ export async function createLead(lead: {
   status?: string;
   job_type?: string;
   preferred_date?: string;
+  location?: string;
   package_name?: string;
   estimated_value?: number;
   source?: string;
