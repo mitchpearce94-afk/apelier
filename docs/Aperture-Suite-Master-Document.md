@@ -1,388 +1,491 @@
 # Aperture Suite — Master Document
 
-**Project:** Aperture Suite — All-in-One Photography Platform  
-**Owner:** Mitchell Pearce  
-**Working Name:** Aperture Suite (subject to change before launch)  
-**Created:** February 13, 2026  
-**Last Updated:** February 13, 2026
+**Version:** 2.0  
+**Last Updated:** 14 February 2026  
+**Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
+**GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
+**Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
+**Supabase Project:** `ibugbyrbjabpveybuqsv`
 
 ---
 
-## 1. Project Overview
+## 1. What Is Aperture Suite?
 
-Aperture Suite is a vertically integrated SaaS platform for professional photographers and videographers that combines:
+Aperture Suite is a vertically integrated SaaS platform for photographers that combines CRM/job management (replacing Studio Ninja), client gallery delivery (replacing Pic-Time), and AI-powered photo editing (replacing Aftershoot/Imagen) into a single product.
 
-1. **CRM & Business Management** (replacing Studio Ninja, HoneyBook, Dubsado)
-2. **AI Photo Editing & Retouching** (replacing Aftershoot, Imagen AI, Photoshop retouching)
-3. **Client Gallery & Delivery** (replacing Pic-Time, Pixieset, ShootProof)
+**The core promise:** From shutter click to client delivery in under 1 hour, versus the industry average of 4–8 weeks.
 
-The core value proposition: **Upload RAW photos → AI edits everything automatically → One-click deliver to client gallery.** The industry average for wedding photo delivery is 4-8 weeks. Aperture Suite enables same-day delivery.
+**Key differentiator:** The photographer's only manual actions are (1) adding a lead and (2) uploading photos after a shoot. Everything else — quoting, booking, invoicing, editing, delivery, follow-ups, reviews, referrals — is fully automated.
 
 ---
 
-## 2. Tech Stack
+## 2. The Fully Automated Client Journey
 
-| Layer | Technology | Hosting | Purpose |
-|-------|-----------|---------|---------|
-| Frontend | Next.js 14 (React) | Vercel | Dashboard, client galleries, all UI |
-| Backend API | Next.js API Routes | Vercel | CRM logic, auth, gallery management |
-| AI Service | Python FastAPI | Railway (+ GPU provider) | RAW processing, AI editing, style training |
-| Database | PostgreSQL | Supabase | All application data |
-| Auth | Supabase Auth | Supabase | Photographer + client authentication |
-| File Storage | Backblaze B2 (S3-compatible) | Backblaze | RAW files, edited JPEGs, thumbnails |
-| CDN | Cloudflare R2 / Cloudflare CDN | Cloudflare | Fast image delivery for galleries |
-| Job Queue | BullMQ (Redis) | Railway (Redis) | AI processing pipeline queue |
-| Real-time | Supabase Realtime | Supabase | Processing status updates, notifications |
-| Email | Resend or Postmark | Cloud | Transactional + marketing emails |
-| Payments | Stripe | Cloud | Subscriptions + print store payments |
+This is the complete end-to-end flow. The photographer's only touchpoints are marked with 👤. Everything else happens automatically.
+
+### Stage 1: Lead Capture
+- **Automated sources:** Website contact form auto-creates lead → future: Facebook/Instagram lead ads via Meta API, email parsing
+- **Manual sources:** 👤 Photographer manually adds lead from Instagram DMs, phone calls, word-of-mouth
+- **System auto-responds** with a personalised enquiry response email within minutes
+
+### Stage 2: Quoting
+- System auto-generates a **client-facing quote link** (e.g. `yourbrand.aperturesuite.com/quote/abc123`)
+- Client opens the link and sees: photographer's branding, package options with pricing, what's included (images, duration, deliverables), and options to add extras (additional images, prints, etc. — configurable by the photographer in Settings)
+- Client **accepts or declines the quote:**
+  - **Accept →** triggers Stage 3 (Booking)
+  - **No response →** system auto-sends follow-up emails at configurable intervals ("Just checking in — did you have any questions about the quote?")
+  - **Decline →** lead updated accordingly, optional "what could we do differently?" follow-up
+
+### Stage 3: Booking
+There are two paths to booking:
+
+**Path A — Automated (from accepted quote):**
+- **All of the following happen automatically when the client accepts the quote:**
+  - Lead status → "Booked"
+  - Job created with all details from the selected package (duration, included images, start/end time, any extras they added)
+  - Job number assigned (permanent, auto-incrementing, never resets: #0001, #0002...)
+  - Contract auto-sent to client for e-signing
+  - Once contract signed → Invoice(s) generated and sent (see invoicing rules below)
+  - Booking confirmation email sent to client with date, time, location, what to expect
+  - Job added to calendar
+  - Pre-shoot workflow automation triggered (reminder emails scheduled)
+
+**Path B — Manual (direct booking from DM/phone call):**
+- 👤 Photographer creates a job directly from the dashboard (client DMs saying "book me in for your available times", or books on a phone call)
+- 👤 Selects the client (or creates new), picks a package, sets the date/time
+- Same automation kicks in from that point: contract sent, invoices generated, confirmation email, calendar entry, workflow triggers
+
+**Invoicing rules (apply to both paths):**
+- If package requires deposit → Deposit invoice `INV-0001-DEP` sent immediately on booking (due on receipt) + Final invoice `INV-0001-FIN` sent with due date automatically set to 14 days before the shoot date
+- If no deposit (pay in full) → Single invoice `INV-0001` sent with due date automatically set to 14 days before the shoot date
+- **Payment happens separately** when the client pays their invoice(s) — not at the quoting/booking stage
+- Overdue invoice reminders sent automatically at configurable intervals
+
+### Stage 4: Pre-Shoot
+- **7 days before:** Auto-email to client with shoot prep tips, location details, what to wear suggestions
+- **1 day before:** Auto-reminder email with time, location, and any last-minute details
+- **Final invoice reminder** if balance is still unpaid (configurable timing)
+- Job status auto-updates to "In Progress" on shoot date
+
+### Stage 5: Post-Shoot — Upload & AI Processing
+- 👤 Photographer uploads RAW files to the job (browser upload or future desktop sync agent)
+- **Job status workflow on upload:**
+  1. Upload starts → Job status changes to **"Editing"**
+  2. AI processing pipeline kicks off automatically (6 phases below)
+  3. AI finishes → Job status changes to **"Ready for Review"** → photographer gets notification
+  4. 👤 Photographer reviews and approves (Stage 6)
+  5. 👤 Photographer clicks "Approve & Deliver" → Job status changes to **"Delivered"**
+  6. Client views gallery AND invoice is paid → Job status auto-changes to **"Completed"**
+  7. If invoice is unpaid after delivery → Job stays on "Delivered" with unpaid flag
+
+- **AI processing pipeline (6 phases, 24 steps):**
+
+  **Phase 0 — Analysis:** Scene detection (portrait/landscape/ceremony/reception), face detection, quality scoring (exposure, focus, noise), duplicate grouping, EXIF extraction
+
+  **Phase 1 — Style Application:** Applies photographer's trained style profile (exposure, white balance, contrast, colour grading, shadows, highlights, HSL, tone curve). Trained from 50–200 reference images the photographer uploads (much lower barrier than Imagen's 3,000–5,000 requirement)
+
+  **Phase 2 — Face & Skin Retouching:** Automatic skin smoothing (texture-preserving), blemish/acne removal, stray hair cleanup, red-eye removal, subtle teeth whitening
+
+  **Phase 3 — Scene Cleanup:** Background person/distraction removal, exit sign removal, power line removal, lens flare removal, trash/bright distraction removal
+
+  **Phase 4 — Composition:** Horizon straightening, crop optimisation, rule-of-thirds alignment
+
+  **Phase 5 — QA & Output:** Final quality check, generate web-res + thumbnails + full-res outputs, verify all images processed
+
+- **AI selects the top N images** based on the package's "Included Images" count (e.g. 50), using quality score, variety (different scenes/poses/people), and composition
+- If AI can only find fewer good images than the package requires → notification to photographer
+- If more selected than package count → notification to confirm or trim
+- **48 hours post-shoot:** Auto-email asking client "How did we do?" (review request)
+
+### Stage 6: Review & Approval
+- 👤 Photographer receives notification that AI processing is complete
+- 👤 Photographer opens the gallery workspace, scrolls through before/after previews
+- 👤 Photographer approves the gallery (95%+ of images should be perfect; the prompt-based chat editor handles the other 5%)
+- **Prompt-based editing** for edge cases: photographer types natural language instructions per image (e.g. "remove the person in the background", "make the sky more blue", "smooth out the wrinkles on the tablecloth"). AI interprets and applies using inpainting/generative fill. Non-destructive with full undo history.
+
+### Stage 7: Delivery
+- 👤 Photographer clicks "Approve & Deliver"
+- **Everything else is automatic:**
+  - Client-facing gallery created with photographer's branding, colours, logo, watermark settings
+  - Gallery link generated (password-protected if configured)
+  - Delivery email sent to client with gallery link
+  - Gallery features: AI-powered search ("ceremony", "first dance"), face recognition grouping, favourites/heart system, configurable download permissions, social sharing with photographer credit, video support, print ordering
+  - Client can view, download, favourite, share, and order prints
+  - Photographer sees analytics: which images viewed, favourited, downloaded
+
+### Stage 8: Post-Delivery Automations (run forever once configured)
+- **3 days post-delivery:** Follow-up email — "Have you had a chance to view your gallery?"
+- **Gallery expiry warning:** 7 days before gallery expires (if expiry is set)
+- **Early bird print sales:** Promotional pricing on prints within first 2 weeks
+- **Favourites follow-up:** "You favourited 12 images — would you like prints?"
+- **Review request:** Prompt for Google/Facebook review with direct links
+- **Referral prompt:** "Know someone who needs a photographer?" with referral link/discount
+- **Anniversary email:** 1 year later — "Happy anniversary! Book a session to celebrate"
+- **Overdue invoice reminders:** Automated escalation at configurable intervals
+
+### Summary: What the Photographer Actually Does
+| Action | Manual? |
+|--------|---------|
+| Add lead (from DM/call) | 👤 Yes |
+| Create job directly (if client books via DM/phone) | 👤 Yes (optional path) |
+| Upload photos after shoot | 👤 Yes |
+| Review AI-edited gallery | 👤 Yes (quick scan) |
+| Approve & deliver | 👤 Yes (one click) |
+| Everything else | ✅ Automated |
 
 ---
 
-## 3. Repository Structure
+## 3. Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Frontend | Next.js 14 (React + TypeScript) | Dashboard, client galleries, SSR for SEO |
+| Styling | Tailwind CSS | Utility-first responsive design |
+| Hosting (Web) | Vercel | Auto-deploys from GitHub `main` branch |
+| Database | Supabase (PostgreSQL) | Auth, data, RLS, real-time subscriptions |
+| AI Service | Python FastAPI | RAW processing, GPU model inference |
+| AI Hosting | Railway or Modal (GPU) | Scalable compute for image processing |
+| Storage | Backblaze B2 (S3-compatible) | Photo storage ($0.005/GB vs AWS $0.023/GB) |
+| CDN | Cloudflare R2 | Fast gallery delivery, watermarking |
+| Queue | BullMQ (Redis) | Job queue for AI processing pipeline |
+| Payments | Stripe + Stripe Connect | Client payments, photographer payouts |
+| Email | Resend or Postmark | Transactional + marketing automations |
+| AI/ML | LibRAW, Pillow, OpenCV, PyTorch | Image processing, style transfer, inpainting |
+
+---
+
+## 4. Database Schema (Supabase PostgreSQL)
+
+**14 tables + RLS policies per photographer:**
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `photographers` | User accounts | auth_user_id, name, email, business_name, subscription_tier, next_job_number |
+| `clients` | Client records | photographer_id, first_name, last_name, email, phone, address, tags, source, notes |
+| `leads` | Sales pipeline | photographer_id, client_id, status (new/contacted/quoted/booked/lost), job_type, preferred_date, package_name, estimated_value, source, notes |
+| `jobs` | Confirmed bookings | photographer_id, client_id, job_number, title, job_type, status, shoot_date, time, end_time, location, package_name, package_amount, included_images, notes |
+| `invoices` | Billing | photographer_id, client_id, job_id, invoice_number, invoice_type (deposit/final/custom), status, line_items (JSONB), subtotal, tax_rate, tax_amount, total, due_date, paid_date |
+| `contracts` | Agreement templates | photographer_id, name, content, merge_tags, is_default |
+| `galleries` | Photo collections | photographer_id, job_id, client_id, name, status, cover_image_url, photo_count, is_published, password_hash, expires_at, settings (JSONB) |
+| `photos` | Individual images | gallery_id, photographer_id, file_url, thumbnail_url, web_url, original_filename, file_size, width, height, ai_edits (JSONB), is_selected, is_favorited, sort_order |
+| `style_profiles` | AI editing styles | photographer_id, name, settings (JSONB), reference_images, is_active |
+| `processing_jobs` | AI queue | photographer_id, gallery_id, status, total_images, processed_images, started_at, completed_at, error_log |
+| `workflows` | Automation rules | photographer_id, name, trigger, actions (JSONB), is_active, conditions (JSONB) |
+| `templates` | Email/message templates | photographer_id, name, type, subject, body, merge_tags |
+| `workflow_actions` | Executed automations | workflow_id, action_type, status, executed_at, result |
+| `audit_log` | Activity tracking | photographer_id, action, entity_type, entity_id, details (JSONB) |
+
+**Migrations applied:**
+1. `20260213000000_initial_schema.sql` — Core 14 tables
+2. `20260214000001_add_invoice_type.sql` — invoice_type column
+3. `20260214000002_add_job_number.sql` — job_number + next_job_number counter
+4. `20260214000003_add_job_time.sql` — time + end_time columns
+5. `increment_job_number()` — Atomic RPC function for permanent job numbering
+
+---
+
+## 5. Current Build Status
+
+### ✅ Fully Working
+- **Auth:** Signup, login, logout, route protection via middleware, OAuth callback ready (Google/Apple buttons in UI, needs provider credentials in Supabase)
+- **Dashboard:** Live stats from Supabase (total clients, leads, jobs, revenue), upcoming shoots, recent leads, gallery status
+- **Clients:** Full CRUD — add, search, click-to-view slide-over, edit, delete. Searchable with tags/source/revenue tracking
+- **Leads:** Full CRUD — add (new or existing client via searchable combobox), pipeline kanban view + list view, status transitions, package selector, edit slide-over, delete. Lost leads hidden from pipeline, visible in list with toggle. Sorted by preferred date (soonest first)
+- **Jobs:** Full CRUD — add with package selector (auto-fills price, images, calculates end time from duration), permanent job numbering (#0001+), status tabs, cancel/restore, edit, delete. Time + end time fields throughout
+- **Invoices:** Full CRUD — create custom or auto-generate from job. Deposit/final split based on package settings (25% default deposit). Job-linked invoice numbers (INV-0001-DEP/FIN). Line item editor, GST calculation, status management
+- **Calendar:** Monthly view with colour-coded jobs, navigate months, today button, job detail popups with time ranges
+- **Contracts:** Single universal template with conditional deposit/no-deposit sections. 10 sections covering all scenarios. Merge tags. Edit + reset to default
+- **Workflows:** 6 pre-built automation presets (lead auto-response, booking confirmation, pre-shoot reminder, post-shoot, gallery delivery, payment reminders). All deposit-aware. Toggle on/off. Preview mode
+- **Analytics:** Period filters, revenue/booked/conversion stats, bar chart revenue by month, lead source + job type breakdowns
+- **Settings:**
+  - Business Profile — saves to Supabase
+  - Packages — name, price, duration, included images, description, deposit toggle + deposit %, active toggle. Updates existing job end times when duration changes
+  - Branding — primary/secondary colours with contrast-aware preview, logo upload, watermark/download toggles
+  - Notifications — email toggles, auto follow-up timing, overdue reminders
+  - Billing — plan display, Stripe placeholder
+- **Responsive Design:** Full mobile/tablet pass — collapsible sidebar with hamburger menu, sticky header, no horizontal scroll, responsive grids, mobile-optimised modals/slide-overs, horizontal scroll tabs
+- **Deployment:** Live on Vercel, auto-deploys from GitHub main branch
+
+### 🔧 Built but Not Yet Connected
+- **Packages:** Stored in localStorage, not Supabase (works for single user, needs DB migration for multi-user)
+- **Contracts:** Stored in localStorage
+- **Workflows:** UI only, email sending not wired
+- **Analytics:** Uses Supabase data but some mock calculations
+- **Branding:** Logo upload is local preview only (needs file storage)
+
+### ❌ Not Yet Built
+- **File upload infrastructure** (Backblaze B2 / Supabase Storage)
+- **AI editing workspace** (the in-browser photo review/edit UI)
+- **AI processing pipeline** (Python service with 6 phases)
+- **Style profile training** (upload reference images, train style)
+- **Prompt-based per-image editing** (chat interface for individual photo edits)
+- **Client-facing gallery pages** (public branded galleries)
+- **Client-facing quote page** (view packages, add extras, accept/decline quote)
+- **Public contact form** (auto-creates leads from website)
+- **Email sending** (Resend/Postmark integration)
+- **Stripe payment integration** (invoicing, deposits, print orders)
+- **Print ordering / e-commerce** (client purchases prints from gallery)
+- **Google/Apple OAuth** (buttons exist, needs provider credentials configured in Supabase)
+- **Native app** (iOS/Android — React Native or Expo)
+- **Full UI/UX redesign** (current dark theme is functional, not polished)
+- **Complete user tutorial/documentation** (in-app walkthrough + standalone docs)
+
+---
+
+## 6. File Structure
 
 ```
 aperture-suite/
 ├── apps/
-│   └── web/                    # Next.js 14 app (frontend + API routes)
-│       ├── app/                # App router pages
-│       │   ├── (auth)/         # Login, signup, forgot password
-│       │   ├── (dashboard)/    # Photographer dashboard
-│       │   │   ├── jobs/       # CRM: jobs & leads
-│       │   │   ├── clients/    # CRM: client management
-│       │   │   ├── calendar/   # CRM: calendar view
-│       │   │   ├── invoices/   # CRM: invoicing
-│       │   │   ├── contracts/  # CRM: digital contracts
-│       │   │   ├── workflows/  # CRM: automation workflows
-│       │   │   ├── gallery/    # AI editing workspace
-│       │   │   ├── settings/   # Account, branding, style profiles
-│       │   │   └── analytics/  # Business analytics & reports
-│       │   ├── (client)/       # Client-facing gallery pages
-│       │   │   ├── [galleryId]/  # Individual gallery view
-│       │   │   └── download/     # Download management
-│       │   └── api/            # API routes
-│       │       ├── auth/       # Auth endpoints
-│       │       ├── jobs/       # CRM endpoints
-│       │       ├── clients/    # Client endpoints
-│       │       ├── gallery/    # Gallery endpoints
-│       │       ├── upload/     # File upload endpoints
-│       │       ├── ai/         # AI processing triggers
-│       │       └── webhooks/   # Stripe, email webhooks
-│       ├── components/         # Shared React components
-│       ├── lib/                # Utilities, Supabase client, etc.
-│       ├── styles/             # Global styles, Tailwind config
-│       ├── public/             # Static assets
-│       ├── package.json
-│       ├── next.config.js
-│       ├── tailwind.config.js
-│       └── tsconfig.json
-│
-├── services/
-│   └── ai-engine/              # Python FastAPI service
+│   └── web/                          # Next.js 14 frontend
 │       ├── app/
-│       │   ├── main.py         # FastAPI app entry
-│       │   ├── routers/        # API route handlers
-│       │   │   ├── process.py  # Image processing endpoints
-│       │   │   ├── style.py    # Style profile management
-│       │   │   └── health.py   # Health check
-│       │   ├── pipeline/       # AI processing pipeline
-│       │   │   ├── ingest.py       # Phase 0: Analysis
-│       │   │   ├── style_edit.py   # Phase 1: Style editing
-│       │   │   ├── retouch.py      # Phase 2: Face retouching
-│       │   │   ├── cleanup.py      # Phase 3: Scene cleanup
-│       │   │   ├── compose.py      # Phase 4: Crop & composition
-│       │   │   ├── finalize.py     # Phase 5: QA & output
-│       │   │   └── prompt_edit.py  # Prompt-based editing
-│       │   ├── models/         # AI model loading & inference
-│       │   ├── storage/        # B2/S3 storage interface
-│       │   └── workers/        # BullMQ job consumers
-│       ├── requirements.txt
+│       │   ├── (auth)/               # Auth pages
+│       │   │   ├── login/page.tsx
+│       │   │   ├── signup/page.tsx
+│       │   │   └── layout.tsx
+│       │   ├── (dashboard)/          # Protected dashboard pages
+│       │   │   ├── dashboard/page.tsx
+│       │   │   ├── clients/page.tsx
+│       │   │   ├── leads/page.tsx
+│       │   │   ├── jobs/page.tsx
+│       │   │   ├── invoices/page.tsx
+│       │   │   ├── galleries/page.tsx
+│       │   │   ├── calendar/page.tsx
+│       │   │   ├── contracts/page.tsx
+│       │   │   ├── workflows/page.tsx
+│       │   │   ├── analytics/page.tsx
+│       │   │   ├── editing/page.tsx   # Placeholder
+│       │   │   ├── settings/page.tsx
+│       │   │   └── layout.tsx
+│       │   ├── auth/callback/route.ts # OAuth callback
+│       │   ├── layout.tsx
+│       │   └── page.tsx              # Landing page
+│       ├── components/
+│       │   ├── dashboard/
+│       │   │   ├── sidebar.tsx
+│       │   │   ├── top-bar.tsx
+│       │   │   └── stat-card.tsx
+│       │   └── ui/
+│       │       ├── button.tsx
+│       │       ├── combobox.tsx       # Searchable client dropdown
+│       │       ├── confirm-dialog.tsx
+│       │       ├── data-table.tsx
+│       │       ├── empty-state.tsx
+│       │       ├── form-fields.tsx
+│       │       ├── modal.tsx
+│       │       ├── slide-over.tsx
+│       │       └── status-badge.tsx
+│       ├── lib/
+│       │   ├── auth-actions.ts
+│       │   ├── queries.ts            # All Supabase CRUD operations
+│       │   ├── types.ts              # TypeScript interfaces
+│       │   ├── utils.ts
+│       │   └── supabase/
+│       │       ├── client.ts
+│       │       └── server.ts
+│       ├── styles/globals.css
+│       ├── middleware.ts              # Auth route protection
+│       └── [config files]
+├── services/
+│   └── ai-engine/                    # Python FastAPI service
+│       ├── app/
+│       │   ├── main.py
+│       │   ├── routers/
+│       │   │   ├── health.py
+│       │   │   ├── process.py
+│       │   │   └── style.py
+│       │   ├── pipeline/             # 6-phase AI processing
+│       │   ├── models/
+│       │   ├── storage/
+│       │   └── workers/
 │       ├── Dockerfile
-│       └── railway.toml
-│
-├── packages/
-│   └── shared/                 # Shared types, constants, utils
-│       ├── types/              # TypeScript types shared across apps
-│       └── constants/          # Shared constants
-│
+│       ├── railway.toml
+│       └── requirements.txt
 ├── supabase/
-│   ├── migrations/             # Database migrations
-│   ├── seed.sql                # Seed data
-│   └── config.toml             # Supabase config
-│
-├── docs/                       # Project documentation
+│   └── migrations/                   # SQL migrations
+│       ├── 20260213000000_initial_schema.sql
+│       ├── 20260214000001_add_invoice_type.sql
+│       ├── 20260214000002_add_job_number.sql
+│       └── 20260214000003_add_job_time.sql
+├── docs/
 │   └── Aperture-Suite-Master-Document.md
-│
-├── .github/
-│   └── workflows/              # CI/CD (future)
-│
-├── .gitignore
-├── package.json                # Root package.json (monorepo)
-├── turbo.json                  # Turborepo config
-└── README.md
+├── packages/shared/                  # Shared types/constants
+├── package.json                      # Root monorepo config
+└── turbo.json                        # Turborepo build config
 ```
 
 ---
 
-## 4. Database Schema (Supabase/PostgreSQL)
+## 7. Competitive Landscape
 
-### Core Tables
+| Feature | Aperture Suite | Studio Ninja | Pic-Time | Aftershoot | Imagen |
+|---------|---------------|-------------|----------|-----------|--------|
+| CRM & Booking | ✅ | ✅ | ❌ | ❌ | ❌ |
+| AI Photo Editing | ✅ | ❌ | ❌ | ✅ | ✅ |
+| Client Galleries | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Prompt-Based Edits | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Auto Scene Cleanup | ✅ | ❌ | ❌ | ❌ | ❌ |
+| End-to-End Automation | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Print Ordering | ✅ (planned) | ❌ | ✅ | ❌ | ❌ |
+| Combined cost | $39–89/mo | $28–45/mo | $15–58/mo | $15–30/mo | $7+/mo |
+| Separate tools total | — | $68–149/mo combined | — | — | — |
 
-**photographers** — Platform users (the photographers)
-- id (uuid, PK)
-- email, name, business_name, phone, address
-- brand_settings (jsonb) — logo URL, colors, fonts, custom domain
-- subscription_tier, subscription_status
-- stripe_customer_id
-- created_at, updated_at
+**Studio Ninja weakness:** Acquired by ImageQuix, support quality declined, years of unfulfilled feature requests (bulk email, date-specific workflows). Wide open door for migration.
 
-**clients** — Photographer's clients
-- id (uuid, PK)
-- photographer_id (FK → photographers)
-- first_name, last_name, email, phone, address
-- notes, tags (text[])
-- source (referral, website, instagram, etc.)
-- created_at, updated_at
-
-**leads** — Pre-booking inquiries
-- id (uuid, PK)
-- photographer_id (FK)
-- client_id (FK → clients)
-- job_type, preferred_date, location
-- source, status (new, contacted, quoted, booked, lost)
-- notes
-- created_at, updated_at
-
-**jobs** — Confirmed bookings/shoots
-- id (uuid, PK)
-- photographer_id (FK)
-- client_id (FK → clients)
-- lead_id (FK → leads, nullable)
-- gallery_id (FK → galleries, nullable)
-- job_type, title, date, location
-- package_name, package_amount
-- status (upcoming, in_progress, editing, delivered, completed)
-- notes
-- workflow_id (FK → workflows, nullable)
-- created_at, updated_at
-
-**invoices**
-- id (uuid, PK)
-- job_id (FK → jobs)
-- photographer_id (FK)
-- client_id (FK → clients)
-- amount, tax, total
-- status (draft, sent, partially_paid, paid, overdue)
-- due_date, paid_date
-- stripe_invoice_id
-- line_items (jsonb)
-- created_at, updated_at
-
-**contracts**
-- id (uuid, PK)
-- job_id (FK → jobs)
-- photographer_id (FK)
-- template_id (FK → contract_templates)
-- content (text) — rendered contract HTML
-- signed_at, signature_data (jsonb)
-- status (draft, sent, signed)
-- created_at
-
-**questionnaires**
-- id (uuid, PK)
-- job_id (FK → jobs)
-- photographer_id (FK)
-- template_id (FK → questionnaire_templates)
-- responses (jsonb)
-- submitted_at
-- created_at
-
-**workflows**
-- id (uuid, PK)
-- photographer_id (FK)
-- name, description
-- trigger_type (lead_created, job_booked, gallery_delivered, etc.)
-- steps (jsonb) — array of { type, delay, template_id, conditions }
-- is_active (boolean)
-- created_at, updated_at
-
-### Gallery & AI Tables
-
-**galleries**
-- id (uuid, PK)
-- photographer_id (FK)
-- job_id (FK → jobs, nullable)
-- client_id (FK → clients, nullable)
-- title, description
-- password_hash (nullable)
-- access_type (password, email, public)
-- download_permissions (jsonb) — { allow_full_res, allow_web, allow_favorites_only }
-- brand_override (jsonb, nullable) — override photographer's default branding
-- expires_at (timestamp, nullable)
-- status (processing, ready, delivered, expired, archived)
-- created_at, updated_at
-
-**photos**
-- id (uuid, PK)
-- gallery_id (FK → galleries)
-- photographer_id (FK)
-- original_key (text) — B2 storage key for RAW/original file
-- edited_key (text) — B2 key for full-res edited JPEG
-- web_key (text) — B2 key for web-optimized JPEG
-- thumb_key (text) — B2 key for thumbnail
-- watermarked_key (text) — B2 key for watermarked preview
-- filename, file_size, mime_type
-- width, height
-- exif_data (jsonb) — camera, lens, settings, GPS, timestamp
-- scene_type (text) — AI classification
-- quality_score (integer) — 0-100
-- ai_edits (jsonb) — all adjustments applied by AI
-- manual_edits (jsonb) — photographer's manual tweaks
-- prompt_edits (jsonb[]) — array of prompt-based edits
-- status (uploaded, processing, edited, approved, delivered)
-- star_rating (integer) — 0-5
-- color_label (text)
-- is_culled (boolean) — AI suggested cull
-- is_favorite (boolean) — client favorited
-- sort_order (integer)
-- created_at, updated_at
-
-**style_profiles**
-- id (uuid, PK)
-- photographer_id (FK)
-- name, description
-- reference_images (text[]) — B2 keys for reference images
-- model_weights_key (text) — B2 key for trained model weights
-- settings (jsonb) — retouching intensity, auto-crop, cleanup preferences
-- status (training, ready, error)
-- training_started_at, training_completed_at
-- created_at, updated_at
-
-**processing_jobs**
-- id (uuid, PK)
-- gallery_id (FK → galleries)
-- photographer_id (FK)
-- style_profile_id (FK → style_profiles)
-- total_images (integer)
-- processed_images (integer)
-- status (queued, processing, completed, failed)
-- started_at, completed_at
-- error_log (text, nullable)
-- created_at
-
-### Template Tables
-
-**email_templates**, **contract_templates**, **questionnaire_templates**
-- id, photographer_id, name, subject (email only), content, variables (jsonb), created_at, updated_at
+**AI editing advantage:** Aftershoot requires local processing. Imagen charges $0.05/photo with 3,000–5,000 image training requirement. Aperture Suite: cloud-based, bundled in subscription, only 50–200 reference images to train style.
 
 ---
 
-## 5. Current Progress
+## 8. Package & Invoicing System
 
-### Session: February 13, 2026
+### Packages (configured in Settings)
+- Name, price, duration (hours), included images count
+- Optional deposit requirement: toggle + percentage (default 25%)
+- Active/inactive toggle for quoting
+- Changing package duration auto-syncs existing job end times
 
-**Completed:**
-- [x] Competitive research: Pic-Time, Studio Ninja, Aftershoot, Imagen AI, Neurapix, FilterPixel
-- [x] Full pricing analysis of all competitors
-- [x] AI photo editing workflow architecture (6-phase automatic pipeline)
-- [x] Prompt-based editing feature design (chat-based per-image edits)
-- [x] Client gallery & delivery system design
-- [x] Marketing automation system design (10 automated campaigns)
-- [x] Migration/import strategy for all major CRMs
-- [x] Data model design (unified CRM → Gallery → AI schema)
-- [x] Tech stack selection
-- [x] Repository structure design
-- [x] Database schema design
-- [x] Master document created
-- [x] Project scaffolding initiated
+### Invoice Flow
+- **Package with deposit:** Creates `INV-{JOB#}-DEP` (25% of package, due immediately) + `INV-{JOB#}-FIN` (75% remaining, due 2 weeks before shoot)
+- **Package without deposit:** Creates `INV-{JOB#}` (full amount, due 2 weeks before shoot)
+- **Custom invoices:** Manual line items for one-off billing
+- Line item editor with qty × price, adjustable GST %
 
-**Key Documents Created:**
-- Photography-Platform-Research-and-AI-Scope.md — Competitive research
-- ai-editing-workflow.jsx — Editing workflow interactive diagram
-- prompt-based-editing.jsx — Prompt editing UI/UX design
-- auto-processing-pipeline.jsx — 6-phase AI pipeline breakdown
-- migration-strategy.jsx — CRM migration/import strategy
-- client-delivery-system.jsx — Gallery delivery & automation design
+### Job Numbering
+- Permanent auto-incrementing counter stored on `photographers.next_job_number`
+- Atomic increment via `increment_job_number()` RPC — no duplicates even with concurrent requests
+- Never resets, even if all jobs are deleted
+- Format: `#0001`, `#0002`, etc.
 
 ---
 
-## 6. Roadmap
+## 9. AI Processing Pipeline (6 Phases, 24 Steps)
 
-### Phase 1 — Foundation (Current)
-- [ ] Project scaffolding (Next.js + Supabase + monorepo)
-- [ ] Authentication (photographer signup/login)
-- [ ] Database migrations for core schema
-- [ ] Basic dashboard layout
-- [ ] File upload infrastructure (B2 integration)
+### Phase 0 — Image Analysis
+Scene type detection, face detection + counting, quality scoring (exposure, focus, noise, composition), duplicate/burst grouping, EXIF metadata extraction
 
-### Phase 2 — CRM Core
-- [ ] Client management (CRUD + CSV import)
-- [ ] Lead management & pipeline
-- [ ] Job creation & tracking
-- [ ] Calendar integration
-- [ ] Invoicing (Stripe integration)
-- [ ] Digital contracts with e-signatures
-- [ ] Questionnaires
-- [ ] Email sending (Resend integration)
+### Phase 1 — Style Application
+Apply photographer's trained style profile: exposure, white balance, contrast, colour grading, shadows, highlights, HSL, tone curve. Style learned from 50–200 reference images.
 
-### Phase 3 — AI Editing Engine
-- [ ] RAW file ingestion & thumbnail generation
-- [ ] Style profile training (reference image upload)
-- [ ] Phase 0: Scene classification & face detection
-- [ ] Phase 1: Style editing application
-- [ ] Phase 2: Auto retouching (skin, blemish, stray hair)
-- [ ] Phase 3: Scene cleanup (background people, distractions)
-- [ ] Phase 4: Crop & composition
-- [ ] Phase 5: QA & output generation
-- [ ] Prompt-based editing (chat interface)
-- [ ] In-browser editing workspace (WebGL preview + sliders)
+### Phase 2 — Face & Skin Retouching
+Skin smoothing (texture-preserving), blemish/acne removal, stray hair cleanup, red-eye removal, subtle teeth whitening
 
-### Phase 4 — Client Gallery
-- [ ] Gallery creation & theming
-- [ ] Client-facing gallery pages (responsive, fast)
-- [ ] Download management (individual, favorites, ZIP)
-- [ ] AI-powered gallery search (face recognition, keywords)
-- [ ] Favorites/heart system
-- [ ] Social sharing
-- [ ] Print store integration
-- [ ] Gallery analytics
+### Phase 3 — Scene Cleanup
+Background person/distraction removal, exit sign removal, power line removal, lens flare removal, trash/bright distraction removal in venue shots
 
-### Phase 5 — Automation & Polish
-- [ ] Workflow automation engine
-- [ ] Marketing email automations
-- [ ] Migration importers (Studio Ninja, HoneyBook, etc.)
-- [ ] Template marketplace
-- [ ] Style profile marketplace
-- [ ] Custom domains for galleries
-- [ ] Mobile app (React Native)
+### Phase 4 — Composition
+Horizon straightening, crop optimisation, rule-of-thirds alignment
+
+### Phase 5 — QA & Output
+Final quality check, generate web-res + thumbnail + full-res outputs, verify all images processed, select top N based on package's included images count
+
+### Photographer Controls
+Every automated step has a configurable level: Off → Flag Only → Auto-Fix. Set defaults once, override per-shoot.
+
+### Prompt-Based Editing (Edge Cases)
+For the ~5% of images the AI doesn't get perfect:
+- Natural language prompts per image ("remove the person in the background")
+- Draw + prompt for precision masking
+- Click + prompt for quick removals
+- Batch prompts across multiple images
+- Conversational refinement ("make it more subtle")
+- Powered by: Grounding DINO + SAM 2 (auto-detection) → Stable Diffusion inpainting / InstructPix2Pix (editing)
+- Non-destructive with full undo history
 
 ---
 
-## 7. Environment & Deployment
+## 10. Migration Strategy
+
+### Supported Import Sources
+- **Studio Ninja:** CSV export of clients, leads, jobs
+- **HoneyBook:** CSV contacts export
+- **Dubsado:** CSV client data
+- **17hats:** CSV export
+- **Táve:** CSV export
+- **Lightroom:** Style/preset import for AI training
+
+### Smart Import Features
+- AI auto-detects column mappings ("First Name" vs "fname" vs "Client First Name")
+- Platform-specific importers ("I'm coming from Studio Ninja")
+- Template Recreation Assistant: paste contract text → AI structures it with merge tags
+- Concierge migration service: free with annual plans
+
+---
+
+## 11. TODO List (Priority Order)
+
+### High Priority — Core Functionality
+1. File upload infrastructure (Backblaze B2 or Supabase Storage)
+2. AI editing workspace UI (in-browser photo review/approval)
+3. AI processing pipeline implementation (Python service, 6 phases)
+4. Client-facing gallery pages (public branded galleries with downloads)
+5. Client-facing quote page (view packages, add extras, accept/decline — triggers booking flow)
+6. Stripe payment integration (deposits, final payments, print orders)
+7. Email sending (Resend/Postmark — transactional + marketing automations)
+8. Move packages and contracts from localStorage to Supabase
+
+### Medium Priority — Features
+9. Google OAuth provider setup (credentials in Supabase)
+10. Apple OAuth provider setup
+11. Style profile training system (upload 50–200 reference images)
+12. Prompt-based per-image editing
+13. Public contact form (auto-creates leads from website)
+14. Print ordering / e-commerce in client galleries
+15. Migration import wizard (CSV from Studio Ninja, HoneyBook, etc.)
+16. Custom domain support for galleries
+
+### Lower Priority — Polish
+17. Full UI/UX redesign (move beyond dark prototype aesthetic)
+18. Native app (iOS/Android — React Native or Expo)
+19. Complete user tutorial/documentation (in-app walkthrough + standalone)
+20. Revisit "lost" lead status — consider removing or rethinking
+21. Quick-add lead button (floating "+", minimal fields for fast DM/call entry)
+
+---
+
+## 12. Deployment & DevOps
 
 ### Local Development
-- **Web app:** `cd apps/web && npm run dev` → localhost:3000
-- **AI service:** `cd services/ai-engine && uvicorn app.main:app --reload` → localhost:8000
-- **Supabase:** Local via `supabase start` or remote project
+```powershell
+cd "C:\Users\mitch\OneDrive\Documents\aperture-suite\apps\web"
+npm run dev
+# → http://localhost:3000
+```
 
-### Production
-- **Web app:** Vercel (auto-deploy from `main` branch)
-- **AI service:** Railway (auto-deploy from `main` branch)
-- **Database:** Supabase cloud project
-- **Storage:** Backblaze B2 bucket
-- **CDN:** Cloudflare R2 or Cloudflare in front of B2
+### Build & Deploy
+```powershell
+# Test build locally first
+cd "C:\Users\mitch\OneDrive\Documents\aperture-suite\apps\web"
+npx next build
 
-### GitHub Repository
-- **Repo name:** `aperture-suite` (or rename later)
-- **Branch strategy:** `main` (production), `dev` (development), feature branches
+# Push to deploy (Vercel auto-deploys from main)
+cd "C:\Users\mitch\OneDrive\Documents\aperture-suite"
+git add .
+git commit -m "descriptive message"
+git push
+```
+
+### Supabase Migrations
+Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `supabase/migrations/` for version control.
+
+### Environment Variables (Vercel + .env.local)
+```
+NEXT_PUBLIC_SUPABASE_URL=https://ibugbyrbjabpveybuqsv.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=[anon key]
+SUPABASE_SERVICE_ROLE_KEY=[service role key]
+```
+
+### File Move Commands
+All files delivered with PowerShell `Move-Item` commands from Downloads to project directory with `-Force` flag. Git push commands included after every change that needs deploying.
 
 ---
 
-## 8. File Locations
+## 13. Key Design Decisions
 
-| Item | Path |
-|------|------|
-| Project root | `C:\Users\mitch\OneDrive\Documents\Photo AI\aperture-suite` |
-| Master document | `C:\Users\mitch\OneDrive\Documents\Photo AI\aperture-suite\docs\Aperture-Suite-Master-Document.md` |
-| Web app | `C:\Users\mitch\OneDrive\Documents\Photo AI\aperture-suite\apps\web` |
-| AI service | `C:\Users\mitch\OneDrive\Documents\Photo AI\aperture-suite\services\ai-engine` |
-| Database migrations | `C:\Users\mitch\OneDrive\Documents\Photo AI\aperture-suite\supabase\migrations` |
+- **Monorepo (Turborepo):** Shared types and constants between frontend and AI service
+- **Next.js 14 App Router:** Server components for SEO on public galleries, client components for interactive dashboard
+- **Supabase RLS:** Every table has row-level security scoped to `photographer_id` — multi-tenant by default
+- **Package-driven automation:** Deposit %, included images, duration — all set per package, inherited by every job using that package
+- **Permanent job numbering:** Counter on photographer record, atomic increment, never resets
+- **Invoice numbers tied to jobs:** Always traceable (`INV-0001-DEP` tells you exactly which job and what type)
+- **AI controls per-step:** Photographers choose how aggressive each AI phase is — from "off" to "auto-fix"
+- **Style training from 50–200 images:** Much lower barrier than competitors (Imagen needs 3,000–5,000)

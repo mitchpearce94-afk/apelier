@@ -18,9 +18,33 @@ export async function getCurrentPhotographer(): Promise<Photographer | null> {
     .eq('auth_user_id', user.id)
     .single();
 
-  if (error) {
-    console.error('Error fetching photographer:', error);
-    return null;
+  if (error || !data) {
+    // Auto-create photographer profile if it doesn't exist
+    // This handles cases where signup profile creation failed (RLS, network, etc.)
+    console.warn('Photographer profile not found, attempting to create...');
+    const meta = user.user_metadata || {};
+    const name = meta?.full_name || meta?.name || 
+      `${meta?.first_name || ''} ${meta?.last_name || ''}`.trim() || 
+      user.email?.split('@')[0] || 'Photographer';
+    
+    const { data: newProfile, error: createError } = await sb
+      .from('photographers')
+      .insert({
+        auth_user_id: user.id,
+        email: user.email,
+        name,
+        business_name: null,
+        subscription_tier: 'free',
+        subscription_status: 'trialing',
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('Error creating photographer profile:', createError);
+      return null;
+    }
+    return newProfile;
   }
   return data;
 }
@@ -58,20 +82,29 @@ export async function getClient(id: string): Promise<Client | null> {
   return data;
 }
 
-export async function createClient(client: {
+export async function createNewClient(client: {
   first_name: string;
   last_name?: string;
   email?: string;
   phone?: string;
+  address?: string;
   tags?: string[];
   source?: string;
   notes?: string;
-  photographer_id: string;
 }): Promise<Client | null> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create client');
+    return null;
+  }
+
   const sb = supabase();
   const { data, error } = await sb
     .from('clients')
-    .insert(client)
+    .insert({
+      ...client,
+      photographer_id: photographer.id,
+    })
     .select()
     .single();
 
@@ -100,11 +133,7 @@ export async function updateClient(id: string, updates: Partial<Client>): Promis
 
 export async function deleteClient(id: string): Promise<boolean> {
   const sb = supabase();
-  const { error } = await sb
-    .from('clients')
-    .delete()
-    .eq('id', id);
-
+  const { error } = await sb.from('clients').delete().eq('id', id);
   if (error) {
     console.error('Error deleting client:', error);
     return false;
@@ -120,7 +149,7 @@ export async function getLeads(): Promise<Lead[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('leads')
-    .select('*, client:clients(*)')
+    .select('*, client:clients(first_name, last_name, email, phone)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -131,20 +160,30 @@ export async function getLeads(): Promise<Lead[]> {
 }
 
 export async function createLead(lead: {
-  photographer_id: string;
   client_id?: string;
+  status?: string;
   job_type?: string;
   preferred_date?: string;
-  location?: string;
+  package_name?: string;
+  estimated_value?: number;
   source?: string;
-  status?: string;
   notes?: string;
 }): Promise<Lead | null> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create lead');
+    return null;
+  }
+
   const sb = supabase();
   const { data, error } = await sb
     .from('leads')
-    .insert(lead)
-    .select('*, client:clients(*)')
+    .insert({
+      ...lead,
+      photographer_id: photographer.id,
+      status: lead.status || 'new',
+    })
+    .select('*, client:clients(first_name, last_name, email, phone)')
     .single();
 
   if (error) {
@@ -160,7 +199,7 @@ export async function updateLead(id: string, updates: Partial<Lead>): Promise<Le
     .from('leads')
     .update(updates)
     .eq('id', id)
-    .select('*, client:clients(*)')
+    .select('*, client:clients(first_name, last_name, email, phone)')
     .single();
 
   if (error) {
@@ -188,8 +227,8 @@ export async function getJobs(): Promise<Job[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('jobs')
-    .select('*, client:clients(*)')
-    .order('date', { ascending: false });
+    .select('*, client:clients(first_name, last_name, email, phone)')
+    .order('shoot_date', { ascending: true });
 
   if (error) {
     console.error('Error fetching jobs:', error);
@@ -199,48 +238,57 @@ export async function getJobs(): Promise<Job[]> {
 }
 
 export async function createJob(job: {
-  photographer_id: string;
   client_id?: string;
-  lead_id?: string;
+  title: string;
   job_type?: string;
-  title?: string;
-  date?: string;
+  status?: string;
+  shoot_date?: string;
   time?: string;
   end_time?: string;
   location?: string;
   package_name?: string;
   package_amount?: number;
-  status?: string;
+  included_images?: number;
   notes?: string;
 }): Promise<Job | null> {
-  const sb = supabase();
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create job');
+    return null;
+  }
 
-  // Atomically increment and get next job number from photographer record
-  const { data: photographer, error: pError } = await sb.rpc('increment_job_number', {
-    p_id: job.photographer_id,
+  // Get next job number via atomic increment
+  const sb = supabase();
+  let jobNumber: number;
+  
+  const { data: rpcData, error: rpcError } = await sb.rpc('increment_job_number', {
+    p_id: photographer.id,
   });
 
-  // Fallback if RPC doesn't exist yet — use read-then-write
-  let nextNumber: number;
-  if (pError || photographer === null || photographer === undefined) {
-    const { data: pg } = await sb
-      .from('photographers')
-      .select('next_job_number')
-      .eq('id', job.photographer_id)
+  if (rpcError || !rpcData) {
+    // Fallback: query max job number
+    console.warn('RPC failed, falling back to max query:', rpcError);
+    const { data: maxJob } = await sb
+      .from('jobs')
+      .select('job_number')
+      .eq('photographer_id', photographer.id)
+      .order('job_number', { ascending: false })
+      .limit(1)
       .single();
-    nextNumber = (pg?.next_job_number || 0) + 1;
-    await sb
-      .from('photographers')
-      .update({ next_job_number: nextNumber })
-      .eq('id', job.photographer_id);
+    jobNumber = (maxJob?.job_number || 0) + 1;
   } else {
-    nextNumber = photographer;
+    jobNumber = rpcData;
   }
 
   const { data, error } = await sb
     .from('jobs')
-    .insert({ ...job, job_number: nextNumber })
-    .select('*, client:clients(*)')
+    .insert({
+      ...job,
+      photographer_id: photographer.id,
+      job_number: jobNumber,
+      status: job.status || 'upcoming',
+    })
+    .select('*, client:clients(first_name, last_name, email, phone)')
     .single();
 
   if (error) {
@@ -256,7 +304,7 @@ export async function updateJob(id: string, updates: Partial<Job>): Promise<Job 
     .from('jobs')
     .update(updates)
     .eq('id', id)
-    .select('*, client:clients(*)')
+    .select('*, client:clients(first_name, last_name, email, phone)')
     .single();
 
   if (error) {
@@ -284,7 +332,7 @@ export async function getInvoices(): Promise<Invoice[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('invoices')
-    .select('*, client:clients(*), job:jobs(*)')
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -295,25 +343,35 @@ export async function getInvoices(): Promise<Invoice[]> {
 }
 
 export async function createInvoice(invoice: {
-  photographer_id: string;
   client_id?: string;
   job_id?: string;
-  invoice_number?: string;
+  invoice_number: string;
   invoice_type?: string;
-  amount: number;
-  tax: number;
-  total: number;
-  currency?: string;
   status?: string;
+  line_items: any[];
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  total: number;
   due_date?: string;
-  line_items?: { description: string; quantity: number; unit_price: number; total: number }[];
   notes?: string;
 }): Promise<Invoice | null> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create invoice');
+    return null;
+  }
+
   const sb = supabase();
   const { data, error } = await sb
     .from('invoices')
-    .insert(invoice)
-    .select('*, client:clients(*), job:jobs(*)')
+    .insert({
+      ...invoice,
+      photographer_id: photographer.id,
+      status: invoice.status || 'draft',
+      invoice_type: invoice.invoice_type || 'custom',
+    })
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number)')
     .single();
 
   if (error) {
@@ -329,7 +387,7 @@ export async function updateInvoice(id: string, updates: Partial<Invoice>): Prom
     .from('invoices')
     .update(updates)
     .eq('id', id)
-    .select('*, client:clients(*), job:jobs(*)')
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number)')
     .single();
 
   if (error) {
@@ -357,7 +415,7 @@ export async function getGalleries(): Promise<Gallery[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('galleries')
-    .select('*, client:clients(*), job:jobs(*)')
+    .select('*, client:clients(first_name, last_name), job:jobs(title)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -373,37 +431,67 @@ export async function getGalleries(): Promise<Gallery[]> {
 
 export async function getDashboardStats() {
   const sb = supabase();
-
-  const [
-    { count: clientCount },
-    { data: leads },
-    { data: jobs },
-    { data: invoices },
-    { data: galleries },
-  ] = await Promise.all([
-    sb.from('clients').select('*', { count: 'exact', head: true }),
-    sb.from('leads').select('id, status'),
-    sb.from('jobs').select('id, status, date, package_amount'),
-    sb.from('invoices').select('id, status, total, paid_amount'),
-    sb.from('galleries').select('id, status'),
+  
+  const [clients, leads, jobs, invoices] = await Promise.all([
+    sb.from('clients').select('id', { count: 'exact' }),
+    sb.from('leads').select('id, status', { count: 'exact' }),
+    sb.from('jobs').select('id, status, package_amount, shoot_date, time, end_time, title, client:clients(first_name, last_name)', { count: 'exact' }),
+    sb.from('invoices').select('id, status, total'),
   ]);
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  const yearStart = new Date(now.getFullYear(), 0, 1).toISOString();
+  const totalRevenue = (invoices.data || [])
+    .filter((i: any) => i.status === 'paid')
+    .reduce((sum: number, i: any) => sum + (i.total || 0), 0);
 
-  const paidInvoices = invoices?.filter((i) => i.status === 'paid') || [];
-  const revenueMonth = paidInvoices
-    .filter((i) => i.paid_amount)
-    .reduce((sum, i) => sum + Number(i.paid_amount || 0), 0);
+  const activeLeads = (leads.data || []).filter((l: any) => !['lost', 'booked'].includes(l.status)).length;
+
+  const upcomingJobs = (jobs.data || [])
+    .filter((j: any) => j.status === 'upcoming' && j.shoot_date)
+    .sort((a: any, b: any) => new Date(a.shoot_date).getTime() - new Date(b.shoot_date).getTime())
+    .slice(0, 5);
 
   return {
-    total_clients: clientCount || 0,
-    pending_leads: leads?.filter((l) => l.status === 'new' || l.status === 'contacted').length || 0,
-    active_jobs: jobs?.filter((j) => j.status === 'upcoming' || j.status === 'in_progress' || j.status === 'editing').length || 0,
-    upcoming_shoots: jobs?.filter((j) => j.status === 'upcoming').length || 0,
-    overdue_invoices: invoices?.filter((i) => i.status === 'overdue').length || 0,
-    revenue_month: revenueMonth,
-    galleries_delivered: galleries?.filter((g) => g.status === 'delivered').length || 0,
+    totalClients: clients.count || 0,
+    totalLeads: leads.count || 0,
+    activeLeads,
+    totalJobs: jobs.count || 0,
+    totalRevenue,
+    upcomingJobs,
   };
+}
+
+// ============================================
+// Job end time sync (when package duration changes)
+// ============================================
+
+export async function syncJobEndTimes(packageName: string, durationHours: number): Promise<number> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) return 0;
+
+  const sb = supabase();
+  const { data: jobs } = await sb
+    .from('jobs')
+    .select('id, time')
+    .eq('photographer_id', photographer.id)
+    .eq('package_name', packageName)
+    .not('time', 'is', null);
+
+  if (!jobs || jobs.length === 0) return 0;
+
+  let updated = 0;
+  for (const job of jobs) {
+    if (!job.time) continue;
+    const [hours, minutes] = job.time.split(':').map(Number);
+    const endHours = hours + durationHours;
+    const endTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    
+    const { error } = await sb
+      .from('jobs')
+      .update({ end_time: endTime })
+      .eq('id', job.id);
+    
+    if (!error) updated++;
+  }
+
+  return updated;
 }
