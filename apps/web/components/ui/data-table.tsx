@@ -26,7 +26,8 @@ export function DataTable<T extends { id: string }>({
 }: DataTableProps<T>) {
   return (
     <div className={cn('rounded-xl border border-white/[0.06] bg-[#0c0c16] overflow-hidden', className)}>
-      <table className="w-full">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[600px]">
         <thead>
           <tr className="border-b border-white/[0.06]">
             {columns.map((col) => (
@@ -72,6 +73,7 @@ export function DataTable<T extends { id: string }>({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

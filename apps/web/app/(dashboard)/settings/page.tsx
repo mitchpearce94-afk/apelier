@@ -267,13 +267,32 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Settings</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Settings</h1>
         <p className="text-sm text-slate-500 mt-1">Manage your business profile and preferences</p>
       </div>
 
+      {/* Mobile tab bar */}
+      <div className="flex overflow-x-auto gap-1 pb-1 -mx-4 px-4 lg:hidden no-scrollbar">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex-shrink-0',
+              activeTab === tab.id
+                ? 'bg-white/[0.08] text-white'
+                : 'text-slate-500 hover:text-slate-300'
+            )}
+          >
+            <tab.icon className="w-3.5 h-3.5" />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-6">
-        {/* Sidebar nav */}
-        <div className="w-52 flex-shrink-0 space-y-1">
+        {/* Sidebar nav — desktop only */}
+        <div className="w-52 flex-shrink-0 space-y-1 hidden lg:block">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -297,15 +316,15 @@ export default function SettingsPage() {
           {activeTab === 'profile' && (
             <div className="space-y-6">
               <Section title="Business Details" description="Your business name and contact information.">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <Input label="Your Name" value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} />
                   <Input label="Business Name" value={profileForm.business_name} onChange={(e) => setProfileForm({ ...profileForm, business_name: e.target.value })} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <Input label="Email" value={profileForm.email} disabled className="opacity-50" />
                   <Input label="Phone" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} placeholder="0412 345 678" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <Input label="Website" value={profileForm.website} onChange={(e) => setProfileForm({ ...profileForm, website: e.target.value })} placeholder="https://yoursite.com" />
                   <Input label="Instagram" value={profileForm.instagram} onChange={(e) => setProfileForm({ ...profileForm, instagram: e.target.value })} placeholder="@yourbusiness" />
                 </div>
@@ -314,7 +333,7 @@ export default function SettingsPage() {
 
               <Section title="Address" description="Used on invoices and contracts.">
                 <Input label="Street" value={profileForm.address_street} onChange={(e) => setProfileForm({ ...profileForm, address_street: e.target.value })} />
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                   <Input label="City" value={profileForm.address_city} onChange={(e) => setProfileForm({ ...profileForm, address_city: e.target.value })} />
                   <Input label="State" value={profileForm.address_state} onChange={(e) => setProfileForm({ ...profileForm, address_state: e.target.value })} />
                   <Input label="Postcode" value={profileForm.address_zip} onChange={(e) => setProfileForm({ ...profileForm, address_zip: e.target.value })} />
@@ -322,7 +341,7 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Preferences" description="Regional and display settings.">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <Select label="Timezone" options={timezoneOptions} value={profileForm.timezone} onChange={(e) => setProfileForm({ ...profileForm, timezone: e.target.value })} />
                   <Select label="Currency" options={currencyOptions} value={profileForm.currency} onChange={(e) => setProfileForm({ ...profileForm, currency: e.target.value })} />
                 </div>
@@ -391,11 +410,11 @@ export default function SettingsPage() {
               {editingPackage && (
                 <Section title={packages.find((p) => p.id === editingPackage.id) ? 'Edit Package' : 'New Package'}>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <Input label="Package Name" value={editingPackage.name} onChange={(e) => setEditingPackage({ ...editingPackage, name: e.target.value })} placeholder="Full Day Wedding" />
                       <Input label="Price ($)" type="number" step="0.01" value={editingPackage.price || ''} onChange={(e) => setEditingPackage({ ...editingPackage, price: parseFloat(e.target.value) || 0 })} placeholder="3500" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <Input label="Duration (hours)" type="number" step="0.5" value={editingPackage.duration_hours || ''} onChange={(e) => setEditingPackage({ ...editingPackage, duration_hours: parseFloat(e.target.value) || 0 })} placeholder="8" />
                       <Input label="Included Images" type="number" value={editingPackage.included_images || ''} onChange={(e) => setEditingPackage({ ...editingPackage, included_images: parseInt(e.target.value) || 0 })} placeholder="50" />
                     </div>
@@ -483,7 +502,7 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Brand Colours" description="Used on client-facing galleries, invoices, and emails.">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-400 mb-1.5">Primary Colour</label>
                     <div className="flex items-center gap-3">

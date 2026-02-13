@@ -268,7 +268,7 @@ export default function JobsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Jobs</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Jobs</h1>
           <p className="text-sm text-slate-500 mt-1">
             {jobs.length} total job{jobs.length !== 1 ? 's' : ''} · {jobs.filter((j) => j.status === 'upcoming').length} upcoming
           </p>
@@ -381,7 +381,7 @@ export default function JobsPage() {
           />
           <Input name="title" label="Job Title" placeholder="Johnson Wedding" />
           <Select name="job_type" label="Job Type" options={jobTypeOptions} />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input name="date" label="Shoot Date" type="date" />
             <Input label="Start Time" type="time" value={addFormStartTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
             <Input name="location" label="Location" placeholder="Venue or area" />
@@ -423,14 +423,14 @@ export default function JobsPage() {
                 </select>
                 {/* Show filled values / override */}
                 {addFormPackageName && addFormPackageName !== '__custom' && (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Input label="Package" value={addFormPackageName} onChange={(e) => setAddFormPackageName(e.target.value)} />
                     <Input label="Amount ($)" type="number" step="0.01" value={addFormPackageAmount} onChange={(e) => setAddFormPackageAmount(e.target.value)} />
                     <Input label="Images" type="number" value={addFormIncludedImages} onChange={(e) => setAddFormIncludedImages(e.target.value)} />
                   </div>
                 )}
                 {addFormPackageName === '__custom' && (
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Input label="Package Name" value="" onChange={(e) => setAddFormPackageName(e.target.value)} placeholder="Custom" />
                     <Input label="Amount ($)" type="number" step="0.01" value={addFormPackageAmount} onChange={(e) => setAddFormPackageAmount(e.target.value)} placeholder="0" />
                     <Input label="Images" type="number" value={addFormIncludedImages} onChange={(e) => setAddFormIncludedImages(e.target.value)} placeholder="50" />
@@ -438,7 +438,7 @@ export default function JobsPage() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Input value={addFormPackageName} onChange={(e) => setAddFormPackageName(e.target.value)} placeholder="Package name" />
                 <Input type="number" step="0.01" value={addFormPackageAmount} onChange={(e) => setAddFormPackageAmount(e.target.value)} placeholder="Amount ($)" />
                 <Input type="number" value={addFormIncludedImages} onChange={(e) => setAddFormIncludedImages(e.target.value)} placeholder="Images" />
@@ -591,15 +591,15 @@ export default function JobsPage() {
             <Input name="title" label="Job Title" defaultValue={selectedJob.title || ''} />
             <Select name="status" label="Status" options={statusOptions} defaultValue={selectedJob.status} />
             <Select name="job_type" label="Job Type" options={jobTypeOptions} defaultValue={selectedJob.job_type || ''} />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input name="date" label="Shoot Date" type="date" defaultValue={selectedJob.date || ''} />
               <Input name="location" label="Location" defaultValue={selectedJob.location || ''} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input name="time" label="Start Time" type="time" defaultValue={selectedJob.time || ''} />
               <Input name="end_time" label="End Time" type="time" defaultValue={selectedJob.end_time || ''} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input name="package_name" label="Package" defaultValue={selectedJob.package_name || ''} />
               <Input name="package_amount" label="Amount ($)" type="number" step="0.01" defaultValue={selectedJob.package_amount || ''} />
             </div>

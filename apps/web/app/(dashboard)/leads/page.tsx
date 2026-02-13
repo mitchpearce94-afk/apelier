@@ -257,7 +257,7 @@ export default function LeadsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Leads</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Leads</h1>
           <p className="text-sm text-slate-500 mt-1">
             {leads.filter((l) => l.status !== 'lost').length} active lead{leads.filter((l) => l.status !== 'lost').length !== 1 ? 's' : ''}
             {leads.filter((l) => l.status === 'lost').length > 0 && (
@@ -283,7 +283,7 @@ export default function LeadsPage() {
       {leads.length === 0 ? (
         <EmptyState icon={Inbox} title="No leads yet" description="Add your first lead to start building your pipeline." action={{ label: 'Add Lead', onClick: () => setShowAddModal(true) }} />
       ) : view === 'pipeline' ? (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {pipelineColumns.map((col) => {
             const colLeads = leads.filter((l) => l.status === col.status);
             return (
@@ -346,7 +346,7 @@ export default function LeadsPage() {
             </div>
             {isNewClient ? (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input name="new_first_name" label="First Name" placeholder="Sarah" required />
                   <Input name="new_last_name" label="Last Name" placeholder="Johnson" />
                 </div>

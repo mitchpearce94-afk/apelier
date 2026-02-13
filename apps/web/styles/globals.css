@@ -35,3 +35,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3a5a;
 }
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

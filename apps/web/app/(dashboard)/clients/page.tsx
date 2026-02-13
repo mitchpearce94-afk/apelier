@@ -175,7 +175,7 @@ export default function ClientsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Clients</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Clients</h1>
           <p className="text-sm text-slate-500 mt-1">{clients.length} total client{clients.length !== 1 ? 's' : ''}</p>
         </div>
         <Button size="sm" onClick={() => setShowAddModal(true)}>
@@ -206,7 +206,7 @@ export default function ClientsPage() {
       {/* Add Client Modal */}
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add Client">
         <form onSubmit={handleAddClient} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input name="first_name" label="First Name" placeholder="Sarah" required />
             <Input name="last_name" label="Last Name" placeholder="Johnson" />
           </div>
@@ -296,7 +296,7 @@ export default function ClientsPage() {
         {/* Edit mode */}
         {selectedClient && editing && (
           <form onSubmit={handleEditClient} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input name="first_name" label="First Name" defaultValue={selectedClient.first_name} required />
               <Input name="last_name" label="Last Name" defaultValue={selectedClient.last_name || ''} />
             </div>

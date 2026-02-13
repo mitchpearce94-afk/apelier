@@ -51,7 +51,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Dashboard</h1>
         <p className="text-sm text-slate-500 mt-1">
           {isEmpty ? 'Welcome to Aperture Suite! Add your first client to get started.' : 'Here\'s your studio overview.'}
         </p>

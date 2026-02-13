@@ -96,7 +96,7 @@ export default function CalendarPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Calendar</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Calendar</h1>
           <p className="text-sm text-slate-500 mt-1">
             {monthJobs.length} shoot{monthJobs.length !== 1 ? 's' : ''} this month
           </p>
@@ -124,8 +124,8 @@ export default function CalendarPage() {
         {/* Day headers */}
         <div className="grid grid-cols-7 border-b border-white/[0.06]">
           {DAYS.map((day) => (
-            <div key={day} className="px-2 py-2.5 text-center">
-              <span className="text-xs font-semibold text-slate-500 uppercase">{day}</span>
+            <div key={day} className="px-1 sm:px-2 py-2 sm:py-2.5 text-center">
+              <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase">{day.slice(0, 3)}</span>
             </div>
           ))}
         </div>
@@ -140,7 +140,7 @@ export default function CalendarPage() {
               <div
                 key={i}
                 className={cn(
-                  'min-h-[100px] p-1.5 border-b border-r border-white/[0.03] transition-colors',
+                  'min-h-[60px] sm:min-h-[100px] p-1 sm:p-1.5 border-b border-r border-white/[0.03] transition-colors',
                   !day.inMonth && 'bg-white/[0.01]',
                   day.inMonth && 'hover:bg-white/[0.02]',
                 )}

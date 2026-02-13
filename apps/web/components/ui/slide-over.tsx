@@ -45,25 +45,25 @@ export function SlideOver({ open, onClose, title, children, width = 'md' }: Slid
       <div
         className={cn(
           'fixed top-0 right-0 z-50 h-full bg-[#0c0c16] border-l border-white/[0.08] shadow-2xl transition-transform duration-300 ease-out flex flex-col',
-          width === 'sm' && 'w-[400px]',
-          width === 'md' && 'w-[520px]',
-          width === 'lg' && 'w-[640px]',
+          'w-full sm:w-[400px]',
+          width === 'md' && 'sm:w-[520px]',
+          width === 'lg' && 'sm:w-[640px]',
           open ? 'translate-x-0' : 'translate-x-full'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] flex-shrink-0">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/[0.06] flex-shrink-0">
+          <h2 className="text-base sm:text-lg font-semibold text-white truncate pr-2">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors"
+            className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
           {children}
         </div>
       </div>

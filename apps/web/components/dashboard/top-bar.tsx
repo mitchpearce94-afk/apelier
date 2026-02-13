@@ -1,11 +1,15 @@
 'use client';
 
-import { Search, Bell, Plus, ChevronDown, LogOut } from 'lucide-react';
+import { Search, Bell, Plus, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-export function TopBar() {
+interface TopBarProps {
+  onMenuClick: () => void;
+}
+
+export function TopBar({ onMenuClick }: TopBarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const router = useRouter();
 
@@ -17,27 +21,41 @@ export function TopBar() {
   };
 
   return (
-    <header className="flex items-center justify-between h-16 px-6 border-b border-white/[0.06] bg-[#07070d]/80 backdrop-blur-sm">
-      {/* Search */}
-      <div className="flex items-center gap-4 flex-1">
-        <div className="relative max-w-md w-full">
+    <header className="flex items-center justify-between h-14 lg:h-16 px-4 lg:px-6 border-b border-white/[0.06] bg-[#07070d]/80 backdrop-blur-sm">
+      {/* Left side */}
+      <div className="flex items-center gap-3 flex-1">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuClick}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors lg:hidden"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        {/* Search — hidden on small mobile, shown from sm up */}
+        <div className="relative max-w-md w-full hidden sm:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
             placeholder="Search clients, jobs, galleries..."
             className="w-full pl-10 pr-4 py-2 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
           />
-          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-600 bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/[0.08]">
+          <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-600 bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/[0.08] hidden md:inline">
             ⌘K
           </kbd>
         </div>
+
+        {/* Mobile search icon */}
+        <button className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors sm:hidden">
+          <Search className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 lg:gap-3">
         <button className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors">
           <Plus className="w-4 h-4" />
-          <span>New</span>
+          <span className="hidden sm:inline">New</span>
         </button>
 
         <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors">
@@ -49,12 +67,12 @@ export function TopBar() {
         <div className="relative">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
-            className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
+            className="flex items-center gap-2 pl-2 lg:pl-3 pr-1.5 lg:pr-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
           >
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center">
               <span className="text-[11px] font-semibold text-white">MP</span>
             </div>
-            <ChevronDown className="w-3 h-3 text-slate-500" />
+            <ChevronDown className="w-3 h-3 text-slate-500 hidden sm:block" />
           </button>
 
           {userMenuOpen && (

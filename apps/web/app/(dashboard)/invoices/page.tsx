@@ -416,7 +416,7 @@ export default function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Invoices</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Invoices</h1>
           <p className="text-sm text-slate-500 mt-1">
             {invoices.length > 0
               ? `${formatCurrency(totalOutstanding)} outstanding · ${formatCurrency(totalPaid)} collected`
@@ -671,7 +671,7 @@ export default function InvoicesPage() {
             </div>
 
             {/* Client & Job */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {selectedInvoice.client && (
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-1">Client</p>

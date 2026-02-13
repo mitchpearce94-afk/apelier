@@ -33,7 +33,7 @@ export default function ContractsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Contract</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Contract</h1>
           <p className="text-sm text-slate-500 mt-1">
             Your contract template auto-fills with client and job details when sent. Conditional sections are included only when relevant.
           </p>
@@ -115,7 +115,7 @@ export default function ContractsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div className="rounded-lg border border-white/[0.06] p-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Merge Tags</p>
               <div className="flex items-center gap-1.5 flex-wrap">

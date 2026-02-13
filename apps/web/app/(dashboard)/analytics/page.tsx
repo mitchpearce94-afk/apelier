@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Analytics</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Analytics</h1>
           <p className="text-sm text-slate-500 mt-1">Track your business performance</p>
         </div>
         <div className="flex items-center rounded-lg border border-white/[0.08] overflow-hidden">
