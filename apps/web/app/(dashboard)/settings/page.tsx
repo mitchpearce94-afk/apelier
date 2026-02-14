@@ -765,7 +765,7 @@ export default function SettingsPage() {
 
           {activeTab === 'billing' && (
             <div className="space-y-6">
-              <Section title="Current Plan" description="Manage your Aperture Suite subscription.">
+              <Section title="Current Plan" description="Manage your Apelier subscription.">
                 <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
                   <div className="flex items-center justify-between mb-2">
                     <div>

@@ -59,7 +59,7 @@ function galleryDeliveryEmail(data: Record<string, string>) {
 
     <!-- Footer -->
     <div style="text-align:center;margin-top:24px;">
-      <p style="font-size:11px;color:#d1d5db;">Sent via Aperture Suite</p>
+      <p style="font-size:11px;color:#d1d5db;">Sent via Apelier</p>
     </div>
   </div>
 </body>
@@ -106,7 +106,7 @@ function bookingConfirmationEmail(data: Record<string, string>) {
     </div>
 
     <div style="text-align:center;margin-top:24px;">
-      <p style="font-size:11px;color:#d1d5db;">Sent via Aperture Suite</p>
+      <p style="font-size:11px;color:#d1d5db;">Sent via Apelier</p>
     </div>
   </div>
 </body>
@@ -146,7 +146,7 @@ function invoiceEmail(data: Record<string, string>) {
     </div>
 
     <div style="text-align:center;margin-top:24px;">
-      <p style="font-size:11px;color:#d1d5db;">Sent via Aperture Suite</p>
+      <p style="font-size:11px;color:#d1d5db;">Sent via Apelier</p>
     </div>
   </div>
 </body>
@@ -188,7 +188,7 @@ function contractSigningEmail(data: Record<string, string>) {
     </div>
 
     <div style="text-align:center;margin-top:24px;">
-      <p style="font-size:11px;color:#d1d5db;">Sent via Aperture Suite</p>
+      <p style="font-size:11px;color:#d1d5db;">Sent via Apelier</p>
     </div>
   </div>
 </body>
@@ -220,7 +220,7 @@ function reminderEmail(data: Record<string, string>) {
     </div>
 
     <div style="text-align:center;margin-top:24px;">
-      <p style="font-size:11px;color:#d1d5db;">Sent via Aperture Suite</p>
+      <p style="font-size:11px;color:#d1d5db;">Sent via Apelier</p>
     </div>
   </div>
 </body>
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `${data.businessName || 'Aperture Suite'} <${fromAddress}>`,
+        from: `${data.businessName || 'Apelier'} <${fromAddress}>`,
         to: [to],
         subject,
         html,

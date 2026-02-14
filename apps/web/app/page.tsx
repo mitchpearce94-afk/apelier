@@ -2,11 +2,11 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center">
       <div className="text-center">
-        <h1 className="text-5xl font-bold text-white mb-4">
-          Aperture Suite
+        <h1 className="text-5xl font-bold text-white mb-4" style={{ fontFamily: "'Libre Baskerville', serif" }}>
+          Apelier
         </h1>
         <p className="text-lg text-slate-400 mb-8">
-          All-in-one photography platform: CRM, AI Editing &amp; Client Gallery Delivery
+          Shoot. Edit. Deliver.
         </p>
         <div className="flex gap-4 justify-center">
           <a

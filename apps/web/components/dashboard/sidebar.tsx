@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, Users, Inbox, Briefcase, Calendar, FileText,
   ScrollText, Zap, ImageIcon, Wand2, BarChart3, Settings,
-  ChevronLeft, Camera, X,
+  ChevronLeft, X,
 } from 'lucide-react';
 
 const navGroups = [
@@ -59,11 +59,21 @@ function NavContent({ collapsed, onLinkClick, showClose, onClose }: {
   return (
     <>
       <div className="flex items-center gap-3 px-5 h-16 border-b border-white/[0.06]">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center flex-shrink-0">
-          <Camera className="w-4 h-4 text-white" />
+        <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+          <svg width="26" height="26" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="5" y="9" width="34" height="26" rx="2" stroke="#d4a574" strokeWidth="0.5" opacity="0.15"/>
+            <rect x="29" y="4.5" width="6" height="3.5" rx="0.8" stroke="#d4a574" strokeWidth="0.5" opacity="0.15"/>
+            <path d="M22 3.5 L25.5 15.5 L22 13 Z" fill="#c47d4a" opacity="0.95"/>
+            <path d="M38 11 L29 19 L28.5 14.5 Z" fill="#d4a574" opacity="0.7"/>
+            <path d="M38 33 L28 25.5 L29.5 21 Z" fill="#c47d4a" opacity="0.55"/>
+            <path d="M22 40.5 L18.5 28.5 L22 31 Z" fill="#d4a574" opacity="0.95"/>
+            <path d="M6 33 L15 25.5 L15.5 30 Z" fill="#c47d4a" opacity="0.7"/>
+            <path d="M6 11 L16 19 L14.5 23.5 Z" fill="#d4a574" opacity="0.55"/>
+            <circle cx="22" cy="22" r="4" fill="#c47d4a"/>
+          </svg>
         </div>
         {!collapsed && (
-          <span className="text-sm font-semibold text-white tracking-tight">Aperture Suite</span>
+          <span className="text-sm font-semibold text-white tracking-tight" style={{ fontFamily: "'Libre Baskerville', serif" }}>Apelier</span>
         )}
         {showClose && (
           <button onClick={onClose} className="ml-auto p-1 rounded-md text-slate-500 hover:text-slate-300">

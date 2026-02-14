@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import '@/styles/globals.css';
 
 export const metadata: Metadata = {
-  title: 'Aperture Suite',
-  description: 'All-in-one photography platform: CRM, AI Editing & Client Gallery Delivery',
+  title: 'Apelier',
+  description: 'Shoot. Edit. Deliver. The all-in-one photography business platform.',
 };
 
 export default function RootLayout({
@@ -13,6 +13,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet" />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );

@@ -139,7 +139,7 @@ function ShopSection({ brandColor, photos }: { brandColor: string; photos: Photo
             </button>
           ))}
         </div>
-        <p className="text-center text-xs text-gray-400 mt-6">Print ordering coming soon — powered by Aperture Suite</p>
+        <p className="text-center text-xs text-gray-400 mt-6">Print ordering coming soon — powered by Apelier</p>
       </div>
     </div>
   );
@@ -426,7 +426,7 @@ export default function PublicGalleryPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <Camera className="w-3.5 h-3.5" />
-            <span>Powered by <span className="font-medium">Aperture Suite</span></span>
+            <span>Powered by <span className="font-medium">Apelier</span></span>
           </div>
           <p className="text-xs text-gray-400">{photos.length} photos</p>
         </div>

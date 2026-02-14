@@ -1,5 +1,5 @@
 // ============================================
-// Core Data Types — Aperture Suite
+// Core Data Types — Apelier
 // ============================================
 
 export type SubscriptionTier = 'free' | 'starter' | 'professional' | 'studio' | 'enterprise';
