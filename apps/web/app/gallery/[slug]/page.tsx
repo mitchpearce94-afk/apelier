@@ -161,7 +161,6 @@ export default function PublicGalleryPage() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [gridSize, setGridSize] = useState<'small' | 'large'>('large');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
-  const [showShop, setShowShop] = useState(false);
 
   const brandColor = brand?.brand_settings?.primary_color || '#6366f1';
   const businessName = brand?.business_name || 'Gallery';
@@ -295,10 +294,8 @@ export default function PublicGalleryPage() {
               )}
 
               {/* Shop */}
-              <button onClick={() => { setShowShop(!showShop); if (!showShop) setTimeout(() => document.getElementById('shop-section')?.scrollIntoView({ behavior: 'smooth' }), 100); }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-full border transition-all ${
-                  showShop ? 'text-white border-transparent' : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                style={showShop ? { backgroundColor: brandColor } : undefined}>
+              <button onClick={() => document.getElementById('shop-section')?.scrollIntoView({ behavior: 'smooth' })}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <ShoppingBag className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Shop</span>
               </button>
