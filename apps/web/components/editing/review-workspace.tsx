@@ -368,7 +368,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       </div>
 
       {/* Photo grid */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+      <div className={`grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 ${approvedCount > 0 && !selectMode && !sentToGallery ? 'pb-24' : ''}`}>
         {filtered.map((photo) => {
           const isSelected = selectedIds.has(photo.id);
           return (
@@ -442,28 +442,28 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
           </div>
         </div>
       ) : approvedCount > 0 && !selectMode && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 px-4 lg:pl-[264px] pb-4 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-3 lg:pl-[264px] lg:px-6 pb-3 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
           <div className="max-w-full pointer-events-auto">
-            <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] p-4 flex items-center justify-between shadow-2xl shadow-black/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                  <ImageIcon className="w-5 h-5 text-indigo-400" />
+            <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between shadow-2xl shadow-black/50">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-white">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-white truncate">
                     {approvedCount} photo{approvedCount !== 1 ? 's' : ''} approved
-                    {stats.edited > 0 && <span className="text-slate-500"> · {stats.edited} still unreviewed</span>}
+                    {stats.edited > 0 && <span className="text-slate-500"> · {stats.edited} unreviewed</span>}
                   </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 hidden sm:block">
                     This will create the client gallery, send the delivery email, and start all post-delivery automations
                   </p>
                 </div>
               </div>
-              <Button size="sm" onClick={handleSendToGallery} disabled={sendingToGallery} className="flex-shrink-0">
+              <Button size="sm" onClick={handleSendToGallery} disabled={sendingToGallery} className="flex-shrink-0 w-full sm:w-auto">
                 {sendingToGallery ? (
                   <><Loader2 className="w-3.5 h-3.5 animate-spin" />Sending...</>
                 ) : (
-                  <><Share2 className="w-3.5 h-3.5" />Approve &amp; Send to Gallery</>
+                  <><Share2 className="w-3.5 h-3.5" />Send to Gallery</>
                 )}
               </Button>
             </div>
