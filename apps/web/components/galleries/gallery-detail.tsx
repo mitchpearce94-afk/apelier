@@ -1,41 +1,133 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDate } from '@/lib/utils';
+import { getPhotos, updateGallery, deliverGallery, getCurrentPhotographer } from '@/lib/queries';
+import { sendGalleryDeliveryEmail } from '@/lib/email';
 import { generateMockGalleryPhotos } from './mock-data';
-import type { Gallery, Photo } from '@/lib/types';
+import type { Gallery, Photo, GalleryAccessType } from '@/lib/types';
 import {
   ArrowLeft, Eye, Share2, Copy, Check, ExternalLink,
   Camera, Heart, Download, Lock, Globe, Mail, Star,
-  Calendar, Clock, ImageIcon, BarChart3, Link2,
-  Settings, ChevronDown, Loader2,
+  Calendar, ImageIcon, Link2, Settings, Loader2,
+  X, ChevronLeft, ChevronRight, ZoomIn,
+  Send, AlertCircle,
 } from 'lucide-react';
 
 interface GalleryDetailProps {
   gallery: Gallery;
   onBack: () => void;
+  onUpdate?: (gallery: Gallery) => void;
 }
 
-export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
+const EXPIRY_OPTIONS = [
+  { label: '7 days', value: 7 },
+  { label: '14 days', value: 14 },
+  { label: '21 days', value: 21 },
+  { label: '30 days', value: 30 },
+  { label: '60 days', value: 60 },
+  { label: '90 days', value: 90 },
+  { label: 'No expiry', value: 0 },
+];
+
+function PhotoLightbox({ photo, photos, onClose, onPrev, onNext }: {
+  photo: Photo;
+  photos: Photo[];
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const idx = photos.findIndex(p => p.id === photo.id);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') onPrev();
+      if (e.key === 'ArrowRight') onNext();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose, onPrev, onNext]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" onClick={onClose}>
+      <button onClick={onClose} className="absolute top-4 right-4 p-2 text-white/60 hover:text-white transition-colors z-10">
+        <X className="w-6 h-6" />
+      </button>
+
+      <button onClick={(e) => { e.stopPropagation(); onPrev(); }} className="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white/40 hover:text-white transition-colors z-10">
+        <ChevronLeft className="w-8 h-8" />
+      </button>
+
+      <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/40 hover:text-white transition-colors z-10">
+        <ChevronRight className="w-8 h-8" />
+      </button>
+
+      <div className="max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        <div className="w-[800px] h-[533px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <Camera className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">{photo.filename}</p>
+            <p className="text-xs text-slate-600 mt-1">{photo.width}×{photo.height}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 text-xs text-white/60">
+        <span>{idx + 1} / {photos.length}</span>
+        {photo.section && <span className="capitalize">· {photo.section.replace('-', ' ')}</span>}
+        {photo.is_favorite && <Heart className="w-3 h-3 text-pink-400 fill-pink-400" />}
+      </div>
+    </div>
+  );
+}
+
+export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: GalleryDetailProps) {
+  const [gallery, setGallery] = useState(initialGallery);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [activeSection, setActiveSection] = useState('all');
   const [showSettings, setShowSettings] = useState(false);
+  const [delivering, setDelivering] = useState(false);
+  const [showDeliverConfirm, setShowDeliverConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
+  const [useMockPhotos, setUseMockPhotos] = useState(false);
+
+  const [accessType, setAccessType] = useState<GalleryAccessType>(gallery.access_type);
+  const [expiryDays, setExpiryDays] = useState<number>(() => {
+    if (!gallery.expires_at) return 0;
+    const diff = new Date(gallery.expires_at).getTime() - new Date(gallery.created_at).getTime();
+    return Math.round(diff / (1000 * 60 * 60 * 24));
+  });
+  const [downloadPerms, setDownloadPerms] = useState(gallery.download_permissions);
 
   const clientName = gallery.client
     ? `${gallery.client.first_name} ${gallery.client.last_name || ''}`.trim()
     : 'Unknown Client';
 
-  const galleryUrl = `https://gallery.aperturesuite.com/${gallery.slug || gallery.id}`;
+  const galleryUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/gallery/${gallery.slug || gallery.id}`;
 
   useEffect(() => {
-    // Load photos — mock for now
-    const mockPhotos = generateMockGalleryPhotos(gallery.photo_count || 24);
-    setPhotos(mockPhotos);
-    setLoading(false);
+    async function loadPhotos() {
+      try {
+        const data = await getPhotos(gallery.id);
+        if (data.length > 0) {
+          setPhotos(data);
+        } else {
+          setUseMockPhotos(true);
+          setPhotos(generateMockGalleryPhotos(gallery.photo_count || 24));
+        }
+      } catch {
+        setUseMockPhotos(true);
+        setPhotos(generateMockGalleryPhotos(gallery.photo_count || 24));
+      }
+      setLoading(false);
+    }
+    loadPhotos();
   }, [gallery.id, gallery.photo_count]);
 
   const copyLink = () => {
@@ -44,18 +136,84 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const saveSettings = async () => {
+    setSaving(true);
+    const expiresAt = expiryDays > 0
+      ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    const updated = await updateGallery(gallery.id, {
+      access_type: accessType,
+      download_permissions: downloadPerms,
+      expires_at: expiresAt ?? undefined,
+    });
+    if (updated) {
+      setGallery({ ...gallery, ...updated });
+      onUpdate?.({ ...gallery, ...updated });
+    }
+    setSaving(false);
+    setShowSettings(false);
+  };
+
+  const handleDeliver = async () => {
+    setDelivering(true);
+    const delivered = await deliverGallery(gallery.id);
+    if (delivered) {
+      setGallery({ ...gallery, ...delivered, status: 'delivered' });
+      onUpdate?.({ ...gallery, ...delivered, status: 'delivered' });
+
+      // Send delivery email
+      const clientEmail = (delivered as any)?.client?.email || (gallery as any)?.client?.email;
+      if (clientEmail && clientName) {
+        try {
+          const photographer = await getCurrentPhotographer();
+          await sendGalleryDeliveryEmail({
+            to: clientEmail,
+            clientName: clientName.split(' ')[0],
+            galleryTitle: gallery.title,
+            galleryUrl,
+            photographerName: photographer?.name || '',
+            businessName: photographer?.business_name || '',
+            brandColor: photographer?.brand_settings?.primary_color,
+            photoCount: String(photos.length),
+            expiryDate: gallery.expires_at ? new Date(gallery.expires_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined,
+          });
+        } catch (e) {
+          console.error('Failed to send delivery email:', e);
+        }
+      }
+    }
+    setDelivering(false);
+    setShowDeliverConfirm(false);
+  };
+
   const sections = ['all', ...Array.from(new Set(photos.map((p) => p.section).filter(Boolean)))] as string[];
   const filtered = activeSection === 'all' ? photos : photos.filter((p) => p.section === activeSection);
   const favoriteCount = photos.filter((p) => p.is_favorite).length;
-  const sneakPeekCount = photos.filter((p) => p.is_sneak_peek).length;
+
+  const lightboxIndex = lightboxPhoto ? photos.findIndex(p => p.id === lightboxPhoto.id) : -1;
+  const goLightbox = useCallback((dir: -1 | 1) => {
+    if (lightboxIndex < 0) return;
+    const next = (lightboxIndex + dir + photos.length) % photos.length;
+    setLightboxPhoto(photos[next]);
+  }, [lightboxIndex, photos]);
 
   const AccessIcon = gallery.access_type === 'password' ? Lock
     : gallery.access_type === 'email' ? Mail
-    : gallery.access_type === 'public' ? Globe
-    : Lock;
+    : Globe;
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {lightboxPhoto && (
+        <PhotoLightbox
+          photo={lightboxPhoto}
+          photos={photos}
+          onClose={() => setLightboxPhoto(null)}
+          onPrev={() => goLightbox(-1)}
+          onNext={() => goLightbox(1)}
+        />
+      )}
+
       {/* Header */}
       <div className="space-y-3">
         <div className="flex items-start gap-3">
@@ -71,7 +229,6 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
           </div>
         </div>
 
-        {/* Action buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           {gallery.status === 'delivered' || gallery.status === 'ready' ? (
             <>
@@ -82,11 +239,6 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
               <Button size="sm" variant="secondary" onClick={() => window.open(galleryUrl, '_blank')}>
                 <ExternalLink className="w-3 h-3" />Preview
               </Button>
-              {gallery.status === 'ready' && (
-                <Button size="sm">
-                  <Share2 className="w-3 h-3" />Deliver to Client
-                </Button>
-              )}
             </>
           ) : gallery.status === 'processing' ? (
             <Button size="sm" variant="ghost" disabled>
@@ -111,8 +263,10 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
           { label: 'Downloads', value: 0, icon: Download, color: 'emerald' },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-3 sm:p-4">
-            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-${stat.color}-500/10 flex items-center justify-center mb-2`}>
-              <stat.icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-${stat.color}-400`} />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center mb-2"
+              style={{ backgroundColor: stat.color === 'indigo' ? 'rgba(99,102,241,0.1)' : stat.color === 'violet' ? 'rgba(139,92,246,0.1)' : stat.color === 'pink' ? 'rgba(236,72,153,0.1)' : 'rgba(16,185,129,0.1)' }}>
+              <stat.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4"
+                style={{ color: stat.color === 'indigo' ? '#818cf8' : stat.color === 'violet' ? '#a78bfa' : stat.color === 'pink' ? '#f472b6' : '#34d399' }} />
             </div>
             <p className="text-[10px] sm:text-xs text-slate-500">{stat.label}</p>
             <p className="text-lg sm:text-xl font-bold text-white">{stat.value}</p>
@@ -157,46 +311,77 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
       {/* Settings panel */}
       {showSettings && (
         <div className="rounded-xl border border-white/[0.08] bg-[#0c0c16] p-4 space-y-4">
-          <h3 className="text-xs font-semibold text-white">Gallery Settings</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-white">Gallery Settings</h3>
+            <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-slate-300">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1">Access Type</label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['password', 'email', 'public'] as const).map((type) => (
-                  <button key={type} className={`px-2 py-1.5 text-[11px] rounded-lg border capitalize transition-all ${
-                    gallery.access_type === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500'
-                  }`}>{type}</button>
+              <label className="block text-[11px] text-slate-500 mb-1.5">Access Type</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['public', 'password', 'email'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setAccessType(type)}
+                    className={`px-2 py-1.5 text-[11px] rounded-lg border capitalize transition-all ${
+                      accessType === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {type}
+                  </button>
                 ))}
               </div>
             </div>
+
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1">Downloads</label>
-              <div className="space-y-1.5">
-                {[
-                  ['Full Resolution', gallery.download_permissions.allow_full_res],
-                  ['Web Size', gallery.download_permissions.allow_web],
-                  ['Favourites Only', gallery.download_permissions.allow_favorites_only],
-                ].map(([label, enabled]) => (
-                  <div key={String(label)} className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">{String(label)}</span>
-                    <div className={`w-7 h-4 rounded-full relative cursor-pointer ${enabled ? 'bg-indigo-500' : 'bg-white/[0.08]'}`}>
-                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-all ${enabled ? 'left-[14px]' : 'left-0.5'}`} />
-                    </div>
-                  </div>
+              <label className="block text-[11px] text-slate-500 mb-1.5">Gallery Expiry</label>
+              <select
+                value={expiryDays}
+                onChange={(e) => setExpiryDays(Number(e.target.value))}
+                className="w-full text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500/50"
+              >
+                {EXPIRY_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
-              </div>
+              </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-[11px] text-slate-500 mb-1">Expiry Date</label>
-            <input
-              type="date"
-              defaultValue={gallery.expires_at ? gallery.expires_at.slice(0, 10) : ''}
-              className="text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500/50"
-            />
+            <label className="block text-[11px] text-slate-500 mb-1.5">Download Permissions</label>
+            <div className="space-y-2">
+              {[
+                { key: 'allow_full_res' as const, label: 'Full Resolution' },
+                { key: 'allow_web' as const, label: 'Web Size' },
+                { key: 'allow_favorites_only' as const, label: 'Favourites Only' },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">{label}</span>
+                  <button
+                    onClick={() => setDownloadPerms({ ...downloadPerms, [key]: !downloadPerms[key] })}
+                    className={`w-8 h-[18px] rounded-full relative transition-colors ${downloadPerms[key] ? 'bg-indigo-500' : 'bg-white/[0.08]'}`}
+                  >
+                    <div className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all ${downloadPerms[key] ? 'left-[15px]' : 'left-[2px]'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
+
+          <Button size="sm" onClick={saveSettings} disabled={saving}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </div>
+      )}
+
+      {useMockPhotos && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>Showing demo photos — real photos will appear once uploaded via Auto Editing.</span>
         </div>
       )}
 
@@ -227,27 +412,26 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
           {filtered.map((photo) => (
             <div
               key={photo.id}
+              onClick={() => setLightboxPhoto(photo)}
               className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group bg-gradient-to-br from-slate-900 to-slate-800 hover:ring-1 hover:ring-white/20 transition-all"
             >
               <div className="w-full h-full flex items-center justify-center">
                 <Camera className="w-5 h-5 text-slate-700" />
               </div>
 
-              {/* Hover overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between">
                   <span className="text-[9px] text-white/80 truncate">{photo.filename}</span>
+                  <ZoomIn className="w-3 h-3 text-white/60" />
                 </div>
               </div>
 
-              {/* Favourite indicator */}
               {photo.is_favorite && (
                 <div className="absolute top-1 right-1">
                   <Heart className="w-3 h-3 text-pink-400 fill-pink-400" />
                 </div>
               )}
 
-              {/* Sneak peek */}
               {photo.is_sneak_peek && (
                 <div className="absolute top-1 left-1">
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
@@ -257,6 +441,46 @@ export function GalleryDetail({ gallery, onBack }: GalleryDetailProps) {
           ))}
         </div>
       )}
+
+      {/* Sticky deliver bar */}
+      {gallery.status === 'ready' && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <Send className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">Ready to deliver</p>
+                <p className="text-[11px] text-slate-500">{photos.length} photos · {accessType} access{expiryDays > 0 ? ` · expires in ${expiryDays} days` : ''}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setShowSettings(true)}>
+                <Settings className="w-3 h-3" />Settings
+              </Button>
+              {showDeliverConfirm ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">Send gallery email?</span>
+                  <Button size="sm" onClick={handleDeliver} disabled={delivering}>
+                    {delivering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    Confirm
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setShowDeliverConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" onClick={() => setShowDeliverConfirm(true)}>
+                  <Share2 className="w-3 h-3" />Deliver to Client
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gallery.status === 'ready' && <div className="h-16" />}
     </div>
   );
 }

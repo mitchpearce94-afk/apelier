@@ -141,7 +141,16 @@ export default function GalleriesPage() {
   }
 
   if (selectedGallery) {
-    return <GalleryDetail gallery={selectedGallery} onBack={() => setSelectedGallery(null)} />;
+    return (
+      <GalleryDetail
+        gallery={selectedGallery}
+        onBack={() => setSelectedGallery(null)}
+        onUpdate={(updated) => {
+          setSelectedGallery(updated);
+          setGalleries(prev => prev.map(g => g.id === updated.id ? updated : g));
+        }}
+      />
+    );
   }
 
   const filtered = galleries.filter((g) => {

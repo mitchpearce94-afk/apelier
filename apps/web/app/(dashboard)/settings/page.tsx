@@ -107,6 +107,10 @@ export default function SettingsPage() {
     secondary_color: '#8b5cf6',
     gallery_watermark: true,
     gallery_download: true,
+    gallery_default_expiry_days: 30,
+    gallery_default_access_type: 'password',
+    gallery_default_download_full_res: true,
+    gallery_default_download_web: true,
     custom_domain: '',
   });
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -685,8 +689,35 @@ export default function SettingsPage() {
               </Section>
 
               <Section title="Gallery Settings" description="Defaults for new client galleries.">
-                <ToggleRow label="Show watermark on preview images" checked={brandForm.gallery_watermark} onChange={(v) => setBrandForm({ ...brandForm, gallery_watermark: v })} />
-                <ToggleRow label="Allow clients to download images" checked={brandForm.gallery_download} onChange={(v) => setBrandForm({ ...brandForm, gallery_download: v })} />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">Default Expiry</label>
+                    <select value={brandForm.gallery_default_expiry_days} onChange={(e) => setBrandForm({ ...brandForm, gallery_default_expiry_days: Number(e.target.value) })}
+                      className="w-full text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-indigo-500/50">
+                      <option value={7}>7 days</option>
+                      <option value={14}>14 days</option>
+                      <option value={21}>21 days</option>
+                      <option value={30}>30 days</option>
+                      <option value={60}>60 days</option>
+                      <option value={90}>90 days</option>
+                      <option value={0}>No expiry</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-500 mb-1">Default Access Type</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(['public', 'password', 'email'] as const).map((type) => (
+                        <button key={type} onClick={() => setBrandForm({ ...brandForm, gallery_default_access_type: type })}
+                          className={`px-2 py-1.5 text-[11px] rounded-lg border capitalize transition-all ${
+                            brandForm.gallery_default_access_type === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                          }`}>{type}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <ToggleRow label="Show watermark on preview images" checked={brandForm.gallery_watermark} onChange={(v) => setBrandForm({ ...brandForm, gallery_watermark: v })} />
+                  <ToggleRow label="Allow full resolution downloads" checked={brandForm.gallery_default_download_full_res} onChange={(v) => setBrandForm({ ...brandForm, gallery_default_download_full_res: v })} />
+                  <ToggleRow label="Allow web-size downloads" checked={brandForm.gallery_default_download_web} onChange={(v) => setBrandForm({ ...brandForm, gallery_default_download_web: v })} />
+                </div>
               </Section>
 
               <Section title="Custom Domain" description="Use your own domain for client galleries (e.g. gallery.yourbusiness.com). Requires Pro plan.">

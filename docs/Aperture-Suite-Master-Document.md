@@ -1,11 +1,13 @@
 # Aperture Suite — Master Document
 
-**Version:** 2.1  
-**Last Updated:** 14 February 2026 (evening session)  
+**Version:** 3.1  
+**Last Updated:** 15 February 2026 (gallery delivery, client-facing gallery, email integration)  
 **Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
 **GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
 **Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
-**Supabase Project:** `ibugbyrbjabpveybuqsv`
+**Supabase Project Ref:** `ibugbyrbjabpveybuqsv`  
+**Supabase SQL Editor:** `https://supabase.com/dashboard/project/ibugbyrbjabpveybuqsv/sql`  
+**Tar command for upload:** `tar -czf aperture-suite.tar.gz --exclude=node_modules --exclude=.next --exclude=.git --exclude=dist --exclude=.turbo .`
 
 ---
 
@@ -160,75 +162,119 @@ There are two paths to booking:
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
-| `photographers` | User accounts | auth_user_id, name, email, business_name, subscription_tier, next_job_number |
+| `photographers` | User accounts | auth_user_id, name, email, business_name, subscription_tier, next_job_number, contract_template, signature_image |
 | `clients` | Client records | photographer_id, first_name, last_name, email, phone, address, tags, source, notes |
-| `leads` | Sales pipeline | photographer_id, client_id, status (new/contacted/quoted/booked/lost), job_type, preferred_date, package_name, estimated_value, source, notes |
-| `jobs` | Confirmed bookings | photographer_id, client_id, job_number, title, job_type, status, shoot_date, time, end_time, location, package_name, package_amount, included_images, notes |
-| `invoices` | Billing | photographer_id, client_id, job_id, invoice_number, invoice_type (deposit/final/custom), status, line_items (JSONB), subtotal, tax_rate, tax_amount, total, due_date, paid_date |
-| `contracts` | Agreement templates | photographer_id, name, content, merge_tags, is_default |
-| `galleries` | Photo collections | photographer_id, job_id, client_id, name, status, cover_image_url, photo_count, is_published, password_hash, expires_at, settings (JSONB) |
-| `photos` | Individual images | gallery_id, photographer_id, file_url, thumbnail_url, web_url, original_filename, file_size, width, height, ai_edits (JSONB), is_selected, is_favorited, sort_order |
-| `style_profiles` | AI editing styles | photographer_id, name, settings (JSONB), reference_images, is_active |
-| `processing_jobs` | AI queue | photographer_id, gallery_id, status, total_images, processed_images, started_at, completed_at, error_log |
+| `leads` | Sales pipeline | photographer_id, client_id, status (new/contacted/quoted/booked/lost), job_type, preferred_date, package_name, estimated_value, source, notes, location |
+| `jobs` | Confirmed bookings | photographer_id, client_id, job_number, title, job_type, status (upcoming/in_progress/editing/ready_for_review/delivered/completed/canceled), date, time, end_time, location, package_name, package_amount, included_images, notes |
+| `invoices` | Billing | photographer_id, client_id, job_id, invoice_number, invoice_type (deposit/final/custom), status, line_items (JSONB), amount, tax, currency, total, due_date, paid_date |
+| `contracts` | Agreements & e-signing | photographer_id, job_id, client_id, name, content, merge_tags, is_default, status (draft/sent/viewed/signed), signing_token (UUID), signature_data (JSONB), client_signed_at, client_ip, expires_at, viewed_at, sent_at |
+| `galleries` | Photo collections | photographer_id, job_id, client_id, title, description, slug, access_type, download_permissions, brand_override, expires_at, status, view_count, photo_count |
+| `photos` | Individual images | gallery_id, photographer_id, original_key, edited_key, web_key, thumb_key, watermarked_key, filename, file_size, width, height, exif_data, scene_type, quality_score, face_data, ai_edits, manual_edits, prompt_edits, status, star_rating, color_label, is_culled, is_favorite, is_sneak_peek, sort_order, section, edit_confidence, needs_review |
+| `style_profiles` | AI editing styles | photographer_id, name, description, reference_image_keys, model_weights_key, settings (JSONB), status (pending/training/ready/error) |
+| `processing_jobs` | AI queue | photographer_id, gallery_id, style_profile_id, total_images, processed_images, current_phase, status (queued/processing/completed/failed/canceled) |
 | `workflows` | Automation rules | photographer_id, name, trigger, actions (JSONB), is_active, conditions (JSONB) |
 | `templates` | Email/message templates | photographer_id, name, type, subject, body, merge_tags |
 | `workflow_actions` | Executed automations | workflow_id, action_type, status, executed_at, result |
 | `audit_log` | Activity tracking | photographer_id, action, entity_type, entity_id, details (JSONB) |
+
+**Supabase Storage:**
+- `photos` bucket — 100MB per file limit, accepts JPEG/PNG/WEBP/TIFF/RAW formats (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2). RLS policies enforce photographer-scoped folder access (`photos/{photographer_id}/...`)
 
 **Migrations applied:**
 1. `20260213000000_initial_schema.sql` — Core 14 tables
 2. `20260214000001_add_invoice_type.sql` — invoice_type column
 3. `20260214000002_add_job_number.sql` — job_number + next_job_number counter
 4. `20260214000003_add_job_time.sql` — time + end_time columns
-5. `increment_job_number()` — Atomic RPC function for permanent job numbering
+5. `20260214000004_job_number_counter.sql` — Atomic RPC function `increment_job_number()` for permanent job numbering
+6. `20260214000005_fix_rls_policies.sql` — **Critical:** Proper INSERT/UPDATE/DELETE policies with `WITH CHECK` for all tables
+7. `20260214000006_contract_signing.sql` — Contract signing fields + anon RLS policies for public contract signing
+8. `20260214000006_add_ready_for_review_status.sql` — `ready_for_review` job status + `included_images` column on jobs
+9. `20260214000007_photographer_signature.sql` — `signature_image` on photographers
+10. `20260214000007_create_photos_storage.sql` — `photos` storage bucket with RLS policies for photographer-scoped upload/view/delete
+11. `20260215000001_gallery_delivery.sql` — Gallery delivery: photographer gallery defaults columns, `password_hash` + `delivered_at` on galleries, unique slug index + auto-slug trigger, `increment_gallery_views()` RPC, anon RLS policies for public gallery/photo/photographer access
+11. `20260215000001_gallery_delivery.sql` — Gallery delivery features: photographer gallery defaults, password_hash, delivered_at, slug unique index, auto-slug trigger, `increment_gallery_views()` RPC, anon RLS for public gallery/photo/photographer access, anon photo favourite updates ⚠️ Run this
 
 ---
 
 ## 5. Current Build Status
 
 ### ✅ Fully Working
-- **Auth:** Signup, login, logout, route protection via middleware, OAuth callback ready (Google/Apple buttons in UI, needs provider credentials in Supabase)
+- **Auth:** Signup, login, logout, route protection via middleware, OAuth callback ready (Google/Apple buttons in UI, needs provider credentials in Supabase). Dynamic user initials in header from photographer profile
 - **Dashboard:** Live stats from Supabase (total clients, leads, jobs, revenue), upcoming shoots, recent leads, gallery status
 - **Clients:** Full CRUD — add, search, click-to-view slide-over, edit, delete. Searchable with tags/source/revenue tracking
 - **Leads:** Full CRUD — add (new or existing client via searchable combobox), pipeline kanban view + list view, status transitions, package selector, edit slide-over, delete. Lost leads hidden from pipeline, visible in list with toggle. Sorted by preferred date (soonest first)
-- **Jobs:** Full CRUD — add with package selector (auto-fills price, images, calculates end time from duration), permanent job numbering (#0001+), status tabs, cancel/restore, edit, delete. Time + end time fields throughout
+- **Jobs:** Full CRUD — add with package selector (auto-fills price, images, calculates end time from duration), permanent job numbering (#0001+), status tabs (including ready_for_review), cancel/restore, edit, delete. Time + end time fields throughout
 - **Invoices:** Full CRUD — create custom or auto-generate from job. Deposit/final split based on package settings (25% default deposit). Job-linked invoice numbers (INV-0001-DEP/FIN). Line item editor, GST calculation, status management
 - **Calendar:** Monthly view with colour-coded jobs, navigate months, today button, job detail popups with time ranges
-- **Contracts:** Single universal template with conditional deposit/no-deposit sections. 10 sections covering all scenarios. Merge tags. Edit + reset to default
-- **Workflows:** 6 pre-built automation presets (lead auto-response, booking confirmation, pre-shoot reminder, post-shoot, gallery delivery, payment reminders). All deposit-aware. Toggle on/off. Preview mode
+- **Contracts:** E-sign system — single universal template with conditional deposit/no-deposit sections, 10 sections covering all scenarios, merge tags auto-filled from job/client data. Public signing page (`/sign/[token]`) with canvas signature pad (draw with mouse/finger, multi-stroke support with confirm/clear). Photographer signature stored in Settings (draw or upload). Both signatures shown on signed contract. Signing captures IP, user agent, timestamp. Contract status tracking (draft → sent → viewed → signed). Copy signing link from contracts list
+- **Workflows:** 6 pre-built automation presets (lead auto-response, booking confirmation, pre-shoot reminder, post-shoot with 48hr review email, gallery delivery, payment reminders). All deposit-aware. Toggle on/off. Preview mode
 - **Analytics:** Period filters, revenue/booked/conversion stats, bar chart revenue by month, lead source + job type breakdowns
+- **Auto Editing (AI Workspace):**
+  - **Photo Upload tab:** Select a job → drag-and-drop or click to upload RAW/JPEG files. Accepts CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2, TIFF, JPEG, PNG, WEBP. Shows per-file upload progress, auto-creates gallery for job, uploads to Supabase Storage (`photos/{photographer_id}/{gallery_id}/originals/`), creates photo records in DB. Real Supabase integration (queries: `getUploadableJobs`, `uploadPhotoToStorage`, `createPhotoRecord`, `createGalleryForJob`)
+  - **Processing Queue tab:** Stats cards (processing/queued/completed/total images). Processing cards with 6-phase progress indicator (Analysis → Style → Retouch → Cleanup → Composition → QA). Each phase shows tooltip with description on hover. Click to review when complete
+  - **Review Workspace:** Full photo review UI with grid view, section filters (ceremony/reception/portraits/etc.), status filters (all/edited/approved/needs review). Click photo to enlarge with before/after. Approve/reject individual photos. Star ratings. Bulk select mode. Prompt-based editing chat input per photo. "Send to Gallery" button to deliver approved photos. Stats bar showing total/edited/approved/needs review/culled counts
+  - **Style profiles:** Create style flow modal with name/description → upload 100-200+ reference images (min 100, recommended 200, max 300) → trains style. Accepted formats: JPEG, PNG, WEBP, TIFF. Upload progress tracking
+  - Falls back to **mock data** when no real processing jobs exist — shows demo content with "Showing demo data" banner
+- **Galleries:**
+  - Dashboard page with grid cards showing cover placeholder, status badge, access type icon, photo count
+  - Status filters (all/ready/delivered/processing/draft), search
+  - Gallery card actions: copy gallery link, deliver button (when ready), view externally (when delivered)
+  - Gallery detail view with settings panel (access type, expiry dropdown 7/14/21/30/60/90/no expiry, download permissions toggles), saves settings to Supabase
+  - Photo lightbox with keyboard nav (arrow keys, Escape), photo counter, section label
+  - Sticky "Deliver to Client" bar at bottom when gallery status is `ready` — confirm flow, sends gallery delivery email via Resend
+  - Real photo loading from Supabase with mock fallback
+  - Queries: `getGallery`, `getGalleryBySlug`, `getGalleryPhotos`, `updateGallery`, `deliverGallery`, `incrementGalleryViews`, `togglePhotoFavorite`, `getPhotographerBranding`
+- **Client-Facing Gallery (`/gallery/[slug]`):**
+  - Public route excluded from auth middleware (like `/sign`)
+  - Loads gallery + photos from Supabase by slug
+  - Password gate for password-protected galleries
+  - Photographer branding (logo initial, colours, business name)
+  - Section filters, favourites filter (heart button), grid size toggle (large/small)
+  - Photo lightbox with keyboard nav, favourite toggle
+  - Client can toggle favourites (saved to Supabase via anon RLS)
+  - Download button (when download permissions allow)
+  - Gallery expiry check — shows error if expired
+  - View count auto-incremented via `increment_gallery_views()` RPC
+  - Footer with "Powered by Aperture Suite"
+- **Email Integration (Resend):**
+  - API route at `/api/email` — accepts template name, recipient, and data
+  - 5 email templates: gallery_delivery, booking_confirmation, invoice, contract_signing, reminder
+  - All templates are branded with photographer's colour and business initial
+  - Dev mode: logs emails when `RESEND_API_KEY` not configured
+  - Helper functions in `lib/email.ts`: `sendGalleryDeliveryEmail`, `sendBookingConfirmationEmail`, `sendInvoiceEmail`, `sendContractSigningEmail`
+  - Gallery delivery wired: "Deliver to Client" button sends branded email with gallery link to client
 - **Settings:**
   - Business Profile — saves to Supabase
   - Packages — name, price, duration, included images, description, deposit toggle + deposit %, active toggle. Updates existing job end times when duration changes
   - Branding — primary/secondary colours with contrast-aware preview, logo upload, watermark/download toggles
+  - Contract Template — preview/edit modes, merge tag click-to-insert, conditional block helpers (deposit/no-deposit), reset to default. Photographer signature section with draw (multi-stroke canvas) or upload image
   - Notifications — email toggles, auto follow-up timing, overdue reminders
   - Billing — plan display, Stripe placeholder
 - **Responsive Design:** Full mobile/tablet pass — collapsible sidebar with hamburger menu, sticky header, no horizontal scroll, responsive grids, mobile-optimised modals/slide-overs, horizontal scroll tabs
 - **Deployment:** Live on Vercel, auto-deploys from GitHub main branch
 
-### 🔧 Built but Not Yet Connected
+### 🔧 Built but Not Yet Connected to Real Backend
 - **Packages:** Stored in localStorage, not Supabase (works for single user, needs DB migration for multi-user)
-- **Contracts:** Stored in localStorage
-- **Workflows:** UI only, email sending not wired
+- **Workflows:** UI only, email templates exist but workflow triggers not wired to automatic scheduling
 - **Analytics:** Uses Supabase data but some mock calculations
 - **Branding:** Logo upload is local preview only (needs file storage)
+- **Auto Editing — Processing Queue & Review:** Upload infrastructure is real (Supabase Storage + queries), but AI processing pipeline (Python FastAPI) not yet running, so processing queue and review workspace use mock data for demo purposes
+- **Style profile training:** UI and upload flow built, backend training not connected
+- **Gallery images:** Photo placeholders shown (Camera icon) — real image display needs Supabase Storage URL integration for thumbnails/web-res
+- **Email sending:** Resend API route built, gallery delivery email wired, but requires `RESEND_API_KEY` env var to actually send (logs in dev mode without it). Booking/invoice/contract emails have templates but aren't wired to their respective flows yet
+- **Gallery password protection:** Password gate UI built on client-facing page, but actual hash verification not implemented (accepts any input currently)
 
 ### ❌ Not Yet Built
-- **File upload infrastructure** (Backblaze B2 / Supabase Storage)
-- **AI editing workspace** (the in-browser photo review/edit UI)
-- **AI processing pipeline** (Python service with 6 phases)
-- **Style profile training** (upload reference images, train style)
-- **Prompt-based per-image editing** (chat interface for individual photo edits)
-- **Client-facing gallery pages** (public branded galleries)
-- **Client-facing quote page** (view packages, add extras, accept/decline quote)
+- **AI processing pipeline running** (Python service with 6 phases — FastAPI scaffolded but no actual image processing)
+- **Prompt-based per-image editing backend** (chat interface built in review workspace, needs AI inference)
+- **Client-facing quote page** (view packages, add extras, accept/decline — triggers booking flow)
 - **Public contact form** (auto-creates leads from website)
-- **Email sending** (Resend/Postmark integration)
 - **Stripe payment integration** (invoicing, deposits, print orders)
 - **Print ordering / e-commerce** (client purchases prints from gallery)
 - **Google/Apple OAuth** (buttons exist, needs provider credentials configured in Supabase)
 - **Native app** (iOS/Android — React Native or Expo)
 - **Full UI/UX redesign** (current dark theme is functional, not polished)
-- **Complete user tutorial/documentation** (in-app walkthrough + standalone docs)
+- **Complete user tutorial/documentation** (in-app walkthrough + standalone docs — do this LAST so nothing gets missed)
 
 ---
 
@@ -277,6 +323,11 @@ These are the actual field names. Do not invent alternatives:
 4. Run `npx next build` to verify
 5. Only then push
 
+### Rule 7: React component names must be capitalised
+- `<accessIcon />` → JSX treats as HTML element → type error
+- `<AccessIcon />` → JSX treats as React component → works
+- Always capitalise variables that hold components before using in JSX
+
 ---
 
 ## 7. File Structure
@@ -301,9 +352,13 @@ aperture-suite/
 │       │   │   ├── contracts/page.tsx
 │       │   │   ├── workflows/page.tsx
 │       │   │   ├── analytics/page.tsx
-│       │   │   ├── editing/page.tsx   # Placeholder
+│       │   │   ├── editing/page.tsx   # AI editing workspace (3 tabs: upload/queue/review)
 │       │   │   ├── settings/page.tsx
 │       │   │   └── layout.tsx
+│       │   ├── sign/[token]/page.tsx  # Public contract signing page
+│       │   ├── gallery/[slug]/page.tsx # Public client-facing gallery page
+│       │   ├── api/
+│       │   │   └── email/route.ts     # Resend email API (gallery delivery, booking, invoice, contract, reminder)
 │       │   ├── auth/callback/route.ts # OAuth callback
 │       │   ├── layout.tsx
 │       │   └── page.tsx              # Landing page
@@ -312,6 +367,15 @@ aperture-suite/
 │       │   │   ├── sidebar.tsx
 │       │   │   ├── top-bar.tsx
 │       │   │   └── stat-card.tsx
+│       │   ├── editing/
+│       │   │   ├── editing-cards.tsx   # ProcessingCard + PhaseProgress components
+│       │   │   ├── photo-upload.tsx    # Job picker + drag-drop RAW upload with progress
+│       │   │   ├── review-workspace.tsx # Full photo review UI with filters, approve/reject, prompt chat
+│       │   │   ├── style-upload.tsx    # Style profile creation flow (name → upload refs)
+│       │   │   └── mock-data.ts       # Mock processing jobs, photos, phases for demo
+│       │   ├── galleries/
+│       │   │   ├── gallery-detail.tsx  # Gallery detail/settings panel
+│       │   │   └── mock-data.ts       # Mock gallery data for demo
 │       │   └── ui/
 │       │       ├── button.tsx
 │       │       ├── combobox.tsx       # Searchable client dropdown
@@ -320,28 +384,32 @@ aperture-suite/
 │       │       ├── empty-state.tsx
 │       │       ├── form-fields.tsx
 │       │       ├── modal.tsx
+│       │       ├── signature-pad.tsx  # Reusable draw/upload signature (multi-stroke, confirm/clear)
 │       │       ├── slide-over.tsx
 │       │       └── status-badge.tsx
 │       ├── lib/
 │       │   ├── auth-actions.ts
-│       │   ├── queries.ts            # All Supabase CRUD operations
-│       │   ├── types.ts              # TypeScript interfaces
+│       │   ├── contract-queries.ts    # Contract-specific Supabase operations (generate, sign, mark viewed)
+│       │   ├── default-contract.ts    # Default contract template constant
+│       │   ├── email.ts              # Email sending helpers (sendGalleryDeliveryEmail, sendBookingConfirmationEmail, etc.)
+│       │   ├── queries.ts            # All Supabase CRUD operations (40+ exported functions)
+│       │   ├── types.ts              # TypeScript interfaces — single source of truth
 │       │   ├── utils.ts
 │       │   └── supabase/
 │       │       ├── client.ts
 │       │       └── server.ts
 │       ├── styles/globals.css
-│       ├── middleware.ts              # Auth route protection
+│       ├── middleware.ts              # Auth route protection (excludes /sign, /gallery)
 │       └── [config files]
 ├── services/
-│   └── ai-engine/                    # Python FastAPI service
+│   └── ai-engine/                    # Python FastAPI service (scaffolded)
 │       ├── app/
 │       │   ├── main.py
 │       │   ├── routers/
 │       │   │   ├── health.py
 │       │   │   ├── process.py
 │       │   │   └── style.py
-│       │   ├── pipeline/             # 6-phase AI processing
+│       │   ├── pipeline/             # 6-phase AI processing (empty, to be built)
 │       │   ├── models/
 │       │   ├── storage/
 │       │   └── workers/
@@ -349,19 +417,30 @@ aperture-suite/
 │       ├── railway.toml
 │       └── requirements.txt
 ├── supabase/
-│   └── migrations/                   # SQL migrations
+│   └── migrations/                   # SQL migrations (run in Supabase Dashboard SQL Editor)
 │       ├── 20260213000000_initial_schema.sql
 │       ├── 20260214000001_add_invoice_type.sql
 │       ├── 20260214000002_add_job_number.sql
 │       ├── 20260214000003_add_job_time.sql
 │       ├── 20260214000004_job_number_counter.sql
-│       └── 20260214000005_fix_rls_policies.sql
+│       ├── 20260214000005_fix_rls_policies.sql
+│       ├── 20260214000006_contract_signing.sql
+│       ├── 20260214000006_add_ready_for_review_status.sql
+│       ├── 20260214000007_photographer_signature.sql
+│       ├── 20260214000007_create_photos_storage.sql
+│       └── 20260215000001_gallery_delivery.sql
 ├── docs/
-│   └── Aperture-Suite-Master-Document.md
+│   ├── Aperture-Suite-Master-Document.md
+│   ├── Aperture-Suite-Overview-For-Partner.md
+│   └── Aperture-Suite-Overview-For-Partner.pdf
+├── CLAUDE-aperture.md                # Claude Code briefing file
 ├── packages/shared/                  # Shared types/constants
-├── package.json                      # Root monorepo config
-└── turbo.json                        # Turborepo build config
+├── package.json                      # Root monorepo config (includes packageManager field for Vercel)
+└── turbo.json                        # Turborepo build config (uses "tasks" not "pipeline")
 ```
+
+**queries.ts exported functions (55+):**
+`getCurrentPhotographer`, `getClients`, `getClient`, `createNewClient`, `updateClient`, `deleteClient`, `getLeads`, `createLead`, `updateLead`, `deleteLead`, `getJobs`, `createJob`, `updateJob`, `deleteJob`, `getInvoices`, `createInvoice`, `updateInvoice`, `deleteInvoice`, `getGalleries`, `getGallery`, `getGalleryBySlug`, `getGalleryPhotos`, `updateGallery`, `deliverGallery`, `incrementGalleryViews`, `togglePhotoFavorite`, `getPhotographerBranding`, `getDashboardStats`, `syncJobEndTimes`, `getProcessingJobs`, `createProcessingJob`, `updateProcessingJob`, `getPhotos`, `updatePhoto`, `bulkUpdatePhotos`, `getStyleProfiles`, `createStyleProfile`, `updateStyleProfile`, `deleteStyleProfile`, `getEditingJobs`, `uploadPhotoToStorage`, `createPhotoRecord`, `createGalleryForJob`, `getUploadableJobs`
 
 ---
 
@@ -463,31 +542,38 @@ For the ~5% of images the AI doesn't get perfect:
 ## 12. TODO List (Priority Order)
 
 ### High Priority — Core Functionality
-1. File upload infrastructure (Backblaze B2 or Supabase Storage)
-2. AI editing workspace UI (in-browser photo review/approval)
-3. AI processing pipeline implementation (Python service, 6 phases)
-4. Client-facing gallery pages (public branded galleries with downloads)
-5. Client-facing quote page (view packages, add extras, accept/decline — triggers booking flow)
-6. Stripe payment integration (deposits, final payments, print orders)
-7. Email sending (Resend/Postmark — transactional + marketing automations)
-8. Move packages and contracts from localStorage to Supabase
+1. ~~Client-facing gallery pages~~ ✅ Built (public branded galleries with downloads, favourites)
+2. Client-facing quote page (view packages, add extras, accept/decline — triggers booking flow)
+3. Stripe payment integration (deposits, final payments, print orders)
+4. ~~Email sending~~ ✅ Built (Resend API route + 5 templates — needs RESEND_API_KEY env var + wiring to remaining flows)
+5. AI processing pipeline running (Python FastAPI service — scaffolded, needs actual image processing logic)
+6. Style profile training backend (model training from reference images — UI built)
+7. Move packages from localStorage to Supabase
+
+### Gallery-Specific TODO
+- ~~Gallery settings should live in the Settings page (global defaults)~~ ✅ Done (expiry, access type, download perms in Settings)
+- ~~Gallery expiry options: 7 / 14 / 21 / 30 / 60 / 90 days / No expiry~~ ✅ Done
+- ~~Sticky "Deliver to Client" bar at bottom of gallery review page~~ ✅ Done
+- ~~Auto-deliver checkbox on the AI editing sticky bar~~ (deferred until AI pipeline is running)
+- Images in gallery should show actual images from Supabase Storage (currently placeholders)
+- Gallery password verification (currently accepts any input — needs hash comparison)
+- Wire remaining email templates to their flows (booking confirmation, invoice, contract signing)
+- Print ordering in client-facing gallery
 
 ### Medium Priority — Features
-9. Google OAuth provider setup (credentials in Supabase)
-10. Apple OAuth provider setup
-11. Style profile training system (upload 50–200 reference images)
-12. Prompt-based per-image editing
-13. Public contact form (auto-creates leads from website)
-14. Print ordering / e-commerce in client galleries
-15. Migration import wizard (CSV from Studio Ninja, HoneyBook, etc.)
-16. Custom domain support for galleries
+8. Google OAuth provider setup (credentials in Supabase — buttons already in UI)
+9. Apple OAuth provider setup
+10. Prompt-based per-image editing backend (chat UI built in review workspace, needs AI inference)
+11. Public contact form (auto-creates leads from website)
+12. Print ordering / e-commerce in client galleries
+13. Migration import wizard (CSV from Studio Ninja, HoneyBook, etc.)
+14. Custom domain support for galleries
 
 ### Lower Priority — Polish
-17. Full UI/UX redesign (move beyond dark prototype aesthetic)
-18. Native app (iOS/Android — React Native or Expo)
-19. Complete user tutorial/documentation (in-app walkthrough + standalone)
-20. Revisit "lost" lead status — consider removing or rethinking
-21. Quick-add lead button (floating "+", minimal fields for fast DM/call entry)
+15. Full UI/UX redesign (move beyond dark prototype aesthetic)
+16. Native app (iOS/Android — React Native or Expo)
+17. Complete user tutorial/documentation (in-app walkthrough + standalone — do this LAST so nothing gets missed)
+18. Quick-add lead button (floating "+", minimal fields for fast DM/call entry)
 
 ---
 
@@ -517,14 +603,18 @@ git push
 Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `supabase/migrations/` for version control.
 
 **Migrations that MUST be run in Supabase SQL Editor (in order):**
-1. `20260213000000_initial_schema.sql` — Core 14 tables (already run during initial setup)
-2. `20260214000001_add_invoice_type.sql` — `invoice_type` column on invoices
-3. `20260214000002_add_job_number.sql` — `job_number` column on jobs
-4. `20260214000003_add_job_time.sql` — `time` + `end_time` columns on jobs
-5. `20260214000004_job_number_counter.sql` — `next_job_number` on photographers + `increment_job_number()` RPC
-6. `20260214000005_fix_rls_policies.sql` — **Critical:** Proper INSERT policies with `WITH CHECK` for all tables
+1. `20260213000000_initial_schema.sql` — Core 14 tables ✅ Run
+2. `20260214000001_add_invoice_type.sql` — `invoice_type` column on invoices ✅ Run
+3. `20260214000002_add_job_number.sql` — `job_number` column on jobs ✅ Run
+4. `20260214000003_add_job_time.sql` — `time` + `end_time` columns on jobs ✅ Run
+5. `20260214000004_job_number_counter.sql` — `next_job_number` on photographers + `increment_job_number()` RPC ✅ Run
+6. `20260214000005_fix_rls_policies.sql` — **Critical:** Proper INSERT policies with `WITH CHECK` for all tables ✅ Run
+7. `20260214000006_contract_signing.sql` — Contract signing fields + anon RLS policies ✅ Run
+8. `20260214000006_add_ready_for_review_status.sql` — `ready_for_review` job status + `included_images` column ⚠️ Check if run
+9. `20260214000007_photographer_signature.sql` — `signature_image` on photographers ✅ Run
+10. `20260214000007_create_photos_storage.sql` — `photos` storage bucket + RLS policies ⚠️ Check if run
 
-### Bugs Fixed (14 Feb 2026 Session)
+### Bugs Fixed (14 Feb 2026 — All Sessions)
 - **Wrong function imports:** `clients/page.tsx` and `leads/page.tsx` imported `createClient` instead of `createNewClient`
 - **RLS INSERT blocked:** Original policies used `FOR ALL USING(...)` which doesn't cover INSERT — fixed with separate `FOR INSERT WITH CHECK` policies
 - **Dashboard stats mismatch:** Dashboard expected `total_clients` etc. but `getDashboardStats()` returns `totalClients` — aligned field names
@@ -538,12 +628,33 @@ Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `sup
 - **Mobile horizontal scroll:** Added `overflow-x: hidden` to html/body and `max-w-full` wrapper around main content
 - **Header not sticky:** Wrapped TopBar in `sticky top-0` container so it stays fixed while scrolling content
 - **Invoicing timing corrected:** Final invoices auto-sent 28 days before shoot (not on booking), due 14 days before shoot
+- **Logout dropdown not showing:** `overflow-hidden` on `<header>` element and parent layout div clipped the absolute-positioned dropdown — removed, moved overflow control to main content area only
+- **Signature pad locking on mouse release:** Separated `stopDrawing` from `saveSignature` — added Confirm/Clear buttons for multi-stroke drawing
+- **Vercel build: missing `packageManager`:** Added `"packageManager": "npm@10.8.2"` to root `package.json`
+- **Vercel build: `pipeline` renamed to `tasks`:** Updated `turbo.json` for Turbo v2
+- **Gallery detail `accessIcon` lowercase:** Renamed to `AccessIcon` (capital A) — React treats lowercase JSX as HTML elements
+- **Hardcoded user initials "MP":** Updated top bar to fetch name from photographers table with auth metadata fallback
+
+### Features Added (15 Feb 2026 — Gallery & Email Session)
+- **Gallery detail rewrite:** Settings panel with access type selector, expiry dropdown (7/14/21/30/60/90/no expiry), download permission toggles — all save to Supabase
+- **Photo lightbox in gallery detail:** Click any photo → full-screen view with keyboard nav (←/→/Escape), photo counter, section labels
+- **Sticky deliver bar:** Fixed bottom bar on gallery detail when status is `ready` — shows photo count, settings, confirm dialog before delivery
+- **Deliver to client sends email:** Gallery delivery triggers Resend email with branded template, gallery link, photo count, expiry date
+- **Client-facing gallery page (`/gallery/[slug]`):** Public route, password gate, photographer branding, section filters, favourites, grid size toggle, lightbox, download buttons, expiry check, view tracking
+- **Email API route (`/api/email`):** Resend integration with 5 branded templates (gallery_delivery, booking_confirmation, invoice, contract_signing, reminder). Dev mode logging when no API key
+- **Email helpers (`lib/email.ts`):** Convenience functions for each email type
+- **Gallery default settings in Settings page:** Default expiry, access type, download permissions
+- **Gallery slug auto-generation:** Database trigger auto-generates URL-safe slug from title on insert
+- **Anon RLS policies:** Public access to delivered galleries, photos, photographer branding for client-facing gallery
+- **`increment_gallery_views()` RPC:** Atomic view count increment callable by anonymous users
 
 ### Environment Variables (Vercel + .env.local)
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://ibugbyrbjabpveybuqsv.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=[anon key]
 SUPABASE_SERVICE_ROLE_KEY=[service role key]
+RESEND_API_KEY=[resend api key — get from resend.com/api-keys]
+RESEND_FROM_EMAIL=[verified sender email — e.g. noreply@yourdomain.com]
 ```
 
 ### File Move Commands
@@ -561,3 +672,31 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 - **Invoice numbers tied to jobs:** Always traceable (`INV-0001-DEP` tells you exactly which job and what type)
 - **AI controls per-step:** Photographers choose how aggressive each AI phase is — from "off" to "auto-fix"
 - **Style training from 50–200 images:** Much lower barrier than competitors (Imagen needs 3,000–5,000)
+- **One contract template per photographer:** Simpler than a template library — less confusing. Uses conditional blocks (`{{#if deposit}}` / `{{#if no_deposit}}`) so one template handles all scenarios
+- **Photographer signature in Settings:** Draw with canvas (multi-stroke) or upload image. Stored as base64 on photographer record. Auto-embedded into every contract
+- **Client signing via public URL:** `/sign/[token]` route excluded from auth middleware. Captures IP, user agent, timestamp. Canvas signature pad with multi-stroke support
+- **Lost leads hidden by default:** Lost leads don't show in pipeline view (clutters the board over time). Visible in list view with a toggle. Count shown in header
+- **Mock data fallback:** Editing and Galleries pages show demo data with a banner when no real data exists, so the UI is always explorable
+- **Mitchell prefers Claude.ai workflow:** Tried Claude Code but prefers chatting with Claude.ai and getting files to download + Move-Item commands. Don't suggest Claude Code workflow
+
+---
+
+## 15. Storage Tiers & Gallery Expiry (Planned — Not Yet Built)
+
+### Proposed Storage Tiers
+- **Hot** — Active/delivered galleries. Full-res + web-res available. Fast CDN delivery (Cloudflare R2). No expiry countdown yet
+- **Warm** — Post-expiry. Web-res thumbnails kept for photographer reference. Full-res moved to cheaper storage (Backblaze B2 cold). Client link disabled
+- **Cold** — Long-term archive. Only originals stored compressed in B2. No gallery accessible. Photographer can restore on demand
+
+### Gallery Expiry Options (configurable in Settings)
+- 7 days / 14 days / 21 days / 30 days / 60 days / 90 days / No expiry
+- Default set globally in Settings
+- Override per gallery when delivering
+- Expiry options must map to storage tier transitions
+
+### Gallery Delivery Features (discussed)
+- Sticky "Deliver to Client" bar at bottom of gallery review page
+- Auto-deliver checkbox on AI editing sticky bar — if checked, gallery auto-delivers when AI finishes without manual approval
+- If auto-deliver is on, galleries page shows green "Delivered" button instead of "Deliver to Customer"
+- Image preview in gallery shows exact same photo the client will see, including watermarks
+- Gallery link with configurable access type (public / password-protected)

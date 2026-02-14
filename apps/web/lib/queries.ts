@@ -823,6 +823,122 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
   return data;
 }
 
+export async function getGallery(id: string): Promise<Gallery | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('galleries')
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number, date)')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching gallery:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getGalleryBySlug(slug: string): Promise<Gallery | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('galleries')
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number)')
+    .eq('slug', slug)
+    .single();
+
+  if (error) {
+    console.error('Error fetching gallery by slug:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getGalleryPhotos(galleryId: string): Promise<Photo[]> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('photos')
+    .select('*')
+    .eq('gallery_id', galleryId)
+    .in('status', ['edited', 'approved', 'delivered'])
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching gallery photos:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function updateGallery(id: string, updates: Partial<Gallery>): Promise<Gallery | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('galleries')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating gallery:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function deliverGallery(id: string): Promise<Gallery | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('galleries')
+    .update({
+      status: 'delivered',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number)')
+    .single();
+
+  if (error) {
+    console.error('Error delivering gallery:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function incrementGalleryViews(id: string): Promise<void> {
+  const sb = supabase();
+  // Use RPC or raw update — increment view_count
+  await sb.rpc('increment_gallery_views', { gallery_id: id });
+}
+
+export async function togglePhotoFavorite(photoId: string, isFavorite: boolean): Promise<boolean> {
+  const sb = supabase();
+  const { error } = await sb
+    .from('photos')
+    .update({ is_favorite: isFavorite })
+    .eq('id', photoId);
+
+  if (error) {
+    console.error('Error toggling favorite:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function getPhotographerBranding(photographerId: string): Promise<{ business_name?: string; brand_settings: any; logo_url?: string } | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('photographers')
+    .select('business_name, brand_settings')
+    .eq('id', photographerId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching branding:', error);
+    return null;
+  }
+  return data;
+}
+
 export async function getUploadableJobs(): Promise<Job[]> {
   const sb = supabase();
   const { data, error } = await sb
