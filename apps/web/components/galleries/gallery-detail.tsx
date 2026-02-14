@@ -323,8 +323,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
 
       {/* Sticky bottom bar */}
       {gallery.status === 'ready' && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="sticky bottom-0 z-40 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                 <Send className="w-4 h-4 text-emerald-400" />
@@ -340,7 +340,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             <div className="flex items-center gap-2">
               {showDeliverConfirm ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400">Send gallery email to {clientName}?</span>
+                  <span className="text-xs text-slate-400 hidden sm:inline">Send gallery email to {clientName}?</span>
                   <Button size="sm" onClick={handleDeliver} disabled={delivering}>
                     {delivering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                     Confirm
@@ -360,8 +360,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       )}
 
       {gallery.status === 'delivered' && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="sticky bottom-0 z-40 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                 <Check className="w-4 h-4 text-emerald-400" />
@@ -380,8 +380,6 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
           </div>
         </div>
       )}
-
-      {(gallery.status === 'ready' || gallery.status === 'delivered') && <div className="h-16" />}
     </div>
   );
 }
