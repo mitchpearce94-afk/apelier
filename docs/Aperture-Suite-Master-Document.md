@@ -1,7 +1,7 @@
 # Aperture Suite — Master Document
 
-**Version:** 2.0  
-**Last Updated:** 14 February 2026  
+**Version:** 2.1  
+**Last Updated:** 14 February 2026 (evening session)  
 **Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
 **GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
 **Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
@@ -534,6 +534,10 @@ Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `sup
 - **Missing `location` on createLead:** Lead type has `location` but `createLead` params didn't include it — added
 - **`shoot_date` vs `date`:** `getJobs()` and `getDashboardStats()` used `shoot_date` in queries but database column is `date` — caused 400 errors on all job fetches
 - **Missing database columns:** `time`, `end_time`, `job_number`, `next_job_number` columns didn't exist until migrations 2-4 were run
+- **+New button in header:** Removed placeholder button from top-bar that had no functionality
+- **Mobile horizontal scroll:** Added `overflow-x: hidden` to html/body and `max-w-full` wrapper around main content
+- **Header not sticky:** Wrapped TopBar in `sticky top-0` container so it stays fixed while scrolling content
+- **Invoicing timing corrected:** Final invoices auto-sent 28 days before shoot (not on booking), due 14 days before shoot
 
 ### Environment Variables (Vercel + .env.local)
 ```

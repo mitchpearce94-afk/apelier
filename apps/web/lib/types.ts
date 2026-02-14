@@ -18,6 +18,7 @@ export interface Photographer {
   subscription_status: SubscriptionStatus;
   stripe_customer_id?: string;
   timezone: string;
+  contract_template?: string;
   next_job_number: number;
   created_at: string;
   updated_at: string;
@@ -147,9 +148,15 @@ export interface Contract {
   photographer_id: string;
   job_id?: string;
   client_id?: string;
+  client?: Client;
+  job?: Job;
   template_id?: string;
   content: string;
   status: ContractStatus;
+  signing_token?: string;
+  sent_at?: string;
+  viewed_at?: string;
+  expires_at?: string;
   signed_at?: string;
   signature_data?: {
     signature_image: string;

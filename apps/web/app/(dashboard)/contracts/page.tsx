@@ -1,283 +1,418 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/form-fields';
-import { cn } from '@/lib/utils';
-import { FileSignature, Save, AlertCircle, Pencil, RotateCcw } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SlideOver } from '@/components/ui/slide-over';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { formatDate } from '@/lib/utils';
+import { getContracts, deleteContract, generateContract } from '@/lib/contract-queries';
+import { getJobs } from '@/lib/queries';
+import type { Contract, Job } from '@/lib/types';
+import {
+  ScrollText, Plus, Eye, Copy, Trash2, CheckCircle2,
+  Clock, Send, FileSignature, ExternalLink, Search,
+} from 'lucide-react';
 
 export default function ContractsPage() {
-  const [content, setContent] = useState(DEFAULT_CONTRACT);
-  const [name, setName] = useState('Photography Services Agreement');
-  const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [nameError, setNameError] = useState('');
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  function handleSave() {
-    if (!name.trim()) {
-      setNameError('Contract name is required');
-      return;
-    }
-    setNameError('');
-    setEditing(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  // Detail panel
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
+
+  // Generate contract
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generating, setGenerating] = useState(false);
+
+  // Delete
+  const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Copy link feedback
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => { loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const [contractData, jobData] = await Promise.all([
+      getContracts(),
+      getJobs(),
+    ]);
+    setContracts(contractData);
+    setJobs(jobData);
+    setLoading(false);
   }
 
-  function handleReset() {
-    setContent(DEFAULT_CONTRACT);
-    setName('Photography Services Agreement');
+  async function handleGenerate(jobId: string) {
+    setGenerating(true);
+    const contract = await generateContract(jobId);
+    if (contract) {
+      setContracts((prev) => [contract, ...prev]);
+      setShowGenerateModal(false);
+      setSelectedContract(contract);
+    }
+    setGenerating(false);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const success = await deleteContract(deleteTarget.id);
+    if (success) {
+      setContracts((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      if (selectedContract?.id === deleteTarget.id) setSelectedContract(null);
+    }
+    setDeleting(false);
+    setDeleteTarget(null);
+  }
+
+  function getSigningUrl(contract: Contract) {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/sign/${contract.signing_token}`;
+  }
+
+  function copySigningLink(contract: Contract) {
+    const url = getSigningUrl(contract);
+    navigator.clipboard.writeText(url);
+    setCopiedId(contract.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  // Filter contracts
+  const filtered = contracts.filter((c) => {
+    const matchesSearch = search === '' ||
+      (c.client && `${c.client.first_name} ${c.client.last_name}`.toLowerCase().includes(search.toLowerCase())) ||
+      (c.job && (c.job.title || c.job.job_type || '').toLowerCase().includes(search.toLowerCase()));
+    const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Jobs that don't already have a contract
+  const contractJobIds = new Set(contracts.map((c) => c.job_id).filter(Boolean));
+  const availableJobs = jobs.filter((j) => !contractJobIds.has(j.id) && j.client_id);
+
+  // Status counts
+  const statusCounts = {
+    all: contracts.length,
+    draft: contracts.filter((c) => c.status === 'draft').length,
+    sent: contracts.filter((c) => c.status === 'sent').length,
+    viewed: contracts.filter((c) => c.status === 'viewed').length,
+    signed: contracts.filter((c) => c.status === 'signed').length,
+  };
+
+  const statusIcon = (status: string) => {
+    switch (status) {
+      case 'draft': return <Clock className="w-3.5 h-3.5 text-slate-500" />;
+      case 'sent': return <Send className="w-3.5 h-3.5 text-blue-400" />;
+      case 'viewed': return <Eye className="w-3.5 h-3.5 text-amber-400" />;
+      case 'signed': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />;
+      default: return null;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Contract</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Your contract template auto-fills with client and job details when sent. Conditional sections are included only when relevant.
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Contracts</h1>
+          <p className="text-sm text-slate-500 mt-1">Track and manage client contracts and e-signatures</p>
         </div>
-        <div className="flex items-center gap-2">
-          {!editing ? (
-            <Button size="sm" onClick={() => setEditing(true)}><Pencil className="w-3.5 h-3.5" />Edit Contract</Button>
-          ) : (
-            <>
-              <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
-              <Button size="sm" onClick={handleSave}>
-                {saved ? <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Saved</> : <><Save className="w-3.5 h-3.5" />Save</>}
-              </Button>
-            </>
-          )}
-        </div>
+        <Button size="sm" onClick={() => setShowGenerateModal(true)}>
+          <Plus className="w-3.5 h-3.5" />Send Contract
+        </Button>
       </div>
 
-      {/* Preview mode */}
-      {!editing && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-6">
-            <div className="flex items-center gap-3 mb-4">
+      {/* Status filter pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {(['all', 'sent', 'viewed', 'signed'] as const).map((status) => (
+          <button
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+              statusFilter === status
+                ? 'bg-white/[0.08] text-white'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {status !== 'all' && statusIcon(status)}
+            {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+            <span className="text-slate-600 ml-1">{statusCounts[status]}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      {contracts.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by client or job..."
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
+          />
+        </div>
+      )}
+
+      {/* Contract list */}
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={ScrollText}
+          title={contracts.length === 0 ? 'No contracts yet' : 'No matching contracts'}
+          description={contracts.length === 0
+            ? 'Contracts are automatically generated when you send one to a client. Click "Send Contract" to get started.'
+            : 'Try adjusting your search or filter.'}
+        />
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((contract) => (
+            <div
+              key={contract.id}
+              onClick={() => setSelectedContract(contract)}
+              className="flex items-center gap-4 p-4 rounded-xl border border-white/[0.06] bg-[#0c0c16] hover:bg-white/[0.02] cursor-pointer transition-colors group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-400/10 to-violet-400/10 border border-white/[0.08] flex items-center justify-center flex-shrink-0">
+                {statusIcon(contract.status)}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-sm font-medium text-white truncate">
+                    {contract.client
+                      ? `${contract.client.first_name} ${contract.client.last_name || ''}`
+                      : 'Unknown Client'}
+                  </p>
+                  <StatusBadge status={contract.status} />
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  {contract.job && (
+                    <span>
+                      {contract.job.job_number ? `#${contract.job.job_number} · ` : ''}
+                      {contract.job.title || contract.job.job_type || 'Untitled Job'}
+                    </span>
+                  )}
+                  {contract.sent_at && <span>Sent {formatDate(contract.sent_at, 'relative')}</span>}
+                  {contract.signed_at && <span className="text-emerald-400">Signed {formatDate(contract.signed_at, 'relative')}</span>}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {contract.status !== 'signed' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); copySigningLink(contract); }}
+                    className="p-2 rounded-lg hover:bg-white/[0.06] text-slate-500 hover:text-slate-300 transition-colors"
+                    title="Copy signing link"
+                  >
+                    {copiedId === contract.id ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(contract); }}
+                  className="p-2 rounded-lg hover:bg-white/[0.06] text-slate-500 hover:text-red-400 transition-colors"
+                  title="Delete contract"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Contract Detail Slide-Over */}
+      <SlideOver
+        open={!!selectedContract}
+        onClose={() => setSelectedContract(null)}
+        title="Contract Details"
+      >
+        {selectedContract && (
+          <div className="space-y-6">
+            {/* Status header */}
+            <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-400/10 to-violet-400/10 border border-white/[0.08] flex items-center justify-center">
-                <FileSignature className="w-4 h-4 text-indigo-400/60" />
+                {statusIcon(selectedContract.status)}
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-white">{name}</h2>
-                <p className="text-xs text-slate-500">This contract is automatically sent when a booking is confirmed</p>
+                <p className="text-sm font-semibold text-white">
+                  {selectedContract.client
+                    ? `${selectedContract.client.first_name} ${selectedContract.client.last_name || ''}`
+                    : 'Unknown Client'}
+                </p>
+                <StatusBadge status={selectedContract.status} />
               </div>
             </div>
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-5 max-h-[600px] overflow-y-auto">
-              <pre className="text-xs text-slate-400 whitespace-pre-wrap font-sans leading-relaxed">{content}</pre>
-            </div>
-          </div>
 
-          <div className="rounded-lg border border-white/[0.06] p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">How it works</p>
-            <div className="space-y-1.5 text-xs text-slate-500">
-              <p>• Merge tags like <span className="text-indigo-400">{'{{client_name}}'}</span> are replaced with real data when the contract is generated.</p>
-              <p>• Conditional blocks like <span className="text-amber-400">{'{{#if deposit}}'}</span> are only included when the job's package requires a deposit.</p>
-              <p>• The contract adapts automatically — you write one template, it handles every job type.</p>
+            {/* Timeline */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Timeline</p>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                  Created {formatDate(selectedContract.created_at)}
+                </div>
+                {selectedContract.sent_at && (
+                  <div className="flex items-center gap-2 text-blue-400">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                    Sent {formatDate(selectedContract.sent_at)}
+                  </div>
+                )}
+                {selectedContract.viewed_at && (
+                  <div className="flex items-center gap-2 text-amber-400">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    Viewed {formatDate(selectedContract.viewed_at)}
+                  </div>
+                )}
+                {selectedContract.signed_at && (
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    Signed {formatDate(selectedContract.signed_at)}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Edit mode */}
-      {editing && (
-        <div className="space-y-4">
-          <div>
-            <Input
-              label="Contract Name"
-              value={name}
-              onChange={(e) => { setName(e.target.value); if (nameError) setNameError(''); }}
-              placeholder="Photography Services Agreement"
-              className={nameError ? 'border-red-500/50' : ''}
-            />
-            {nameError && (
-              <p className="flex items-center gap-1.5 text-xs text-red-400 mt-1.5">
-                <AlertCircle className="w-3 h-3" />{nameError}
-              </p>
+            {/* Signing link */}
+            {selectedContract.status !== 'signed' && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Signing Link</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={getSigningUrl(selectedContract)}
+                    className="flex-1 px-3 py-2 text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-400 truncate"
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => copySigningLink(selectedContract)}>
+                    {copiedId === selectedContract.id ? <><CheckCircle2 className="w-3.5 h-3.5" />Copied</> : <><Copy className="w-3.5 h-3.5" />Copy</>}
+                  </Button>
+                </div>
+                <a
+                  href={getSigningUrl(selectedContract)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
+                >
+                  Open signing page <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             )}
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-medium text-slate-400">Contract Content</label>
-              <button onClick={handleReset} className="flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-400 transition-colors">
-                <RotateCcw className="w-3 h-3" />Reset to default
-              </button>
-            </div>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={30}
-              className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all font-mono resize-y leading-relaxed"
-              placeholder="Enter your contract text..."
-            />
-          </div>
+            {/* Signature display (if signed) */}
+            {selectedContract.status === 'signed' && selectedContract.signature_data && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Signature</p>
+                <div className="rounded-lg border border-white/[0.06] bg-white p-3">
+                  <img
+                    src={selectedContract.signature_data.signature_image}
+                    alt="Client signature"
+                    className="max-h-24 mx-auto"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-600">
+                  Signed from IP {selectedContract.signature_data.ip_address} on {formatDate(selectedContract.signed_at!, 'long')}
+                </p>
+              </div>
+            )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div className="rounded-lg border border-white/[0.06] p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Merge Tags</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {['{{client_name}}', '{{client_email}}', '{{job_date}}', '{{job_time}}', '{{job_location}}', '{{package_name}}', '{{package_amount}}', '{{included_images}}', '{{business_name}}', '{{photographer_name}}', '{{today_date}}'].map((tag) => (
-                  <button key={tag} type="button" onClick={() => setContent((prev) => prev + tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-indigo-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{tag}</button>
-                ))}
+            {/* Contract content preview */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Contract Content</p>
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4 max-h-[400px] overflow-y-auto">
+                <pre className="text-xs text-slate-400 whitespace-pre-wrap font-sans leading-relaxed">
+                  {selectedContract.content}
+                </pre>
               </div>
             </div>
-            <div className="rounded-lg border border-white/[0.06] p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Conditional Blocks</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { tag: '{{#if deposit}}...{{/if}}', desc: 'Deposit required' },
-                  { tag: '{{#if second_shooter}}...{{/if}}', desc: 'Second shooter' },
-                ].map((item) => (
-                  <button key={item.tag} type="button" onClick={() => setContent((prev) => prev + '\n' + item.tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-amber-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{item.desc}</button>
-                ))}
-              </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-2 border-t border-white/[0.06]">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="text-red-400 hover:text-red-300"
+                onClick={() => { setDeleteTarget(selectedContract); setSelectedContract(null); }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </SlideOver>
+
+      {/* Generate Contract Modal */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !generating && setShowGenerateModal(false)} />
+          <div className="relative w-full max-w-md rounded-xl border border-white/[0.06] bg-[#0c0c16] shadow-2xl">
+            <div className="px-5 py-4 border-b border-white/[0.06]">
+              <h2 className="text-sm font-semibold text-white">Send Contract</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Select a job to generate and send a contract to the client.</p>
+            </div>
+            <div className="px-5 py-4 max-h-[400px] overflow-y-auto">
+              {availableJobs.length === 0 ? (
+                <div className="text-center py-6">
+                  <FileSignature className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No jobs available for contracts.</p>
+                  <p className="text-xs text-slate-600 mt-1">All existing jobs already have contracts, or no jobs with clients exist.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availableJobs.map((job) => (
+                    <button
+                      key={job.id}
+                      onClick={() => handleGenerate(job.id)}
+                      disabled={generating}
+                      className="w-full text-left p-3 rounded-lg border border-white/[0.06] hover:bg-white/[0.04] transition-colors disabled:opacity-50"
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-sm font-medium text-white">
+                          {job.job_number ? `#${job.job_number} · ` : ''}
+                          {job.title || job.job_type || 'Untitled Job'}
+                        </p>
+                        <StatusBadge status={job.status} />
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                        {job.client && <span>{job.client.first_name} {job.client.last_name || ''}</span>}
+                        {job.date && <span>· {formatDate(job.date)}</span>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-white/[0.06] flex justify-end">
+              <Button size="sm" variant="secondary" onClick={() => setShowGenerateModal(false)} disabled={generating}>
+                Cancel
+              </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Contract"
+        message={`Are you sure you want to delete this contract${deleteTarget?.client ? ` for ${deleteTarget.client.first_name} ${deleteTarget.client.last_name || ''}` : ''}? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleting}
+      />
     </div>
   );
 }
-
-const DEFAULT_CONTRACT = `PHOTOGRAPHY SERVICES AGREEMENT
-
-This Photography Services Agreement ("Agreement") is entered into on {{today_date}} between:
-
-Photographer: {{business_name}}, operated by {{photographer_name}}
-Client: {{client_name}} ({{client_email}})
-
-
-1. SERVICES
-
-The Photographer agrees to provide professional photography services as follows:
-
-    Date:       {{job_date}}
-    Time:       {{job_time}}
-    Location:   {{job_location}}
-    Package:    {{package_name}}
-
-
-2. COMPENSATION
-
-The total fee for the services described above is {{package_amount}} (inclusive of GST where applicable).
-
-{{#if deposit}}
-DEPOSIT & PAYMENT SCHEDULE:
-A non-refundable deposit of {{deposit_amount}} ({{deposit_percent}}% of the total fee) is required to confirm and secure the booking. The deposit is due upon signing this agreement. The remaining balance of {{final_amount}} is due no later than 14 days before the scheduled date. Failure to pay the remaining balance by the due date may result in cancellation of services, with the deposit forfeited.
-{{/if}}
-
-{{#if no_deposit}}
-PAYMENT:
-Full payment of {{package_amount}} is due prior to the session date. Payment must be received before the scheduled date for services to proceed.
-{{/if}}
-
-Accepted payment methods include bank transfer, credit card, or any method made available through the Photographer's invoicing system.
-
-
-3. IMAGE DELIVERY
-
-The Photographer will deliver {{included_images}} professionally edited images via a private online gallery with download access.
-
-Delivery timeline:
-    - Standard sessions: within 2-3 weeks of the session date.
-    - Weddings and full-day events: within 4-6 weeks of the event date.
-
-The Photographer reserves creative discretion over the style, composition, and final selection of images delivered. RAW or unedited files are not included and will not be provided.
-
-
-4. WHAT'S INCLUDED
-
-The selected package ({{package_name}}) includes:
-    - Professional photography coverage for the duration specified in the package.
-    - Professional editing and colour grading of all delivered images.
-    - A private online gallery for viewing and downloading.
-    - A personal-use license for all delivered images.
-
-{{#if second_shooter}}
-SECOND SHOOTER:
-A qualified second photographer is included in this package. The Photographer is responsible for coordinating, directing, and editing all second shooter imagery.
-{{/if}}
-
-
-5. COPYRIGHT & IMAGE USAGE
-
-The Photographer retains full copyright of all images produced under this agreement, in accordance with the Copyright Act 1968 (Cth).
-
-The Client is granted a non-exclusive, non-transferable, personal-use license for all delivered images. This means the Client may:
-    - Print images for personal display.
-    - Share images on personal social media accounts.
-    - Use images for personal, non-commercial purposes.
-
-The Client may NOT:
-    - Sell, license, or sublicense any images.
-    - Use images for commercial or promotional purposes without prior written consent.
-    - Edit, alter, or apply filters to images in a way that misrepresents the Photographer's work.
-
-The Photographer may use selected images from the session for portfolio, website, social media, marketing, print materials, and competition entries, unless the Client requests otherwise in writing prior to the session.
-
-
-6. CANCELLATION & RESCHEDULING
-
-BY THE CLIENT:
-    - 30+ days before the scheduled date: {{#if deposit}}Deposit forfeited. No further payment required.{{/if}}{{#if no_deposit}}Full refund minus a $50 administration fee.{{/if}}
-    - 14-29 days before: 50% of the total fee is due.
-    - Less than 14 days before: the full fee is due.
-    - No-show without notice: the full fee is due, no refund.
-
-BY THE PHOTOGRAPHER:
-    - If the Photographer must cancel for any reason, the Client will receive a full refund of all payments made, or the option to reschedule at no additional cost.
-
-RESCHEDULING:
-    - The Client may reschedule once at no additional charge with a minimum of 14 days written notice, subject to the Photographer's availability.
-    - Additional rescheduling requests may incur a $50 rebooking fee.
-
-WEATHER (OUTDOOR SESSIONS):
-    - In the event of severe weather that would significantly impact the quality of the session, the Photographer may offer to reschedule at no additional cost. This decision is at the Photographer's reasonable discretion.
-
-
-7. LIABILITY
-
-The Photographer carries professional indemnity insurance and takes all reasonable precautions, including the use of backup equipment and storage, to ensure the safety and delivery of images.
-
-However, the Photographer's total liability under this agreement is limited to the total fee paid by the Client. The Photographer is not liable for:
-    - Images not captured due to guest interference, venue restrictions, lighting conditions, or timeline changes outside the Photographer's control.
-    - Loss, damage, or corruption of images after delivery to the Client.
-    - Circumstances beyond the Photographer's reasonable control.
-
-
-8. FORCE MAJEURE
-
-If the scheduled session or event cannot proceed due to circumstances beyond either party's reasonable control — including but not limited to natural disasters, pandemics, government restrictions, severe weather events, or personal emergencies — the parties agree to work together in good faith to reschedule at a mutually agreeable date.
-
-If rescheduling is not possible within 12 months of the original date, the Photographer will refund all payments made minus any reasonable expenses already incurred (such as travel bookings or subcontractor fees).
-
-
-9. PRIVACY
-
-The Photographer will handle all personal information in accordance with the Australian Privacy Principles. Client contact details and images are stored securely and are not shared with third parties without consent, except as required to deliver the services described in this agreement (e.g. online gallery hosting, printing partners).
-
-{{#if minors}}
-MINORS:
-A parent or legal guardian must be present for all sessions involving children under 18. By signing this agreement, the Client confirms they have the authority to consent on behalf of any minors being photographed.
-{{/if}}
-
-
-10. ENTIRE AGREEMENT
-
-This Agreement constitutes the entire understanding between the Photographer and the Client. Any amendments must be made in writing and agreed upon by both parties.
-
-
-AGREED AND ACCEPTED:
-
-
-Client: {{client_name}}
-Signature: ___________________________
-Date: {{today_date}}
-
-
-Photographer: {{photographer_name}}
-Signature: ___________________________
-Date: {{today_date}}`;

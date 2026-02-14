@@ -7,10 +7,11 @@ import { cn, formatCurrency } from '@/lib/utils';
 import { getCurrentPhotographer } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import {
-  User, Package, Palette, Bell, CreditCard,
+  User, Package, Palette, Bell, CreditCard, FileSignature,
   Plus, Trash2, Save, Check, Pencil, Upload, ImageIcon,
 } from 'lucide-react';
 import type { Photographer } from '@/lib/types';
+import { DEFAULT_CONTRACT } from '@/lib/default-contract';
 
 // ============================================
 // Types
@@ -29,11 +30,12 @@ interface PackageItem {
   deposit_percent: number;
 }
 
-type SettingsTab = 'profile' | 'packages' | 'branding' | 'notifications' | 'billing';
+type SettingsTab = 'profile' | 'packages' | 'contract' | 'branding' | 'notifications' | 'billing';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'profile', label: 'Business Profile', icon: User },
   { id: 'packages', label: 'Packages', icon: Package },
+  { id: 'contract', label: 'Contract Template', icon: FileSignature },
   { id: 'branding', label: 'Branding', icon: Palette },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -117,6 +119,12 @@ export default function SettingsPage() {
     auto_reminder_unpaid: true,
   });
 
+  // Contract template
+  const [contractTemplate, setContractTemplate] = useState('');
+  const [contractEditing, setContractEditing] = useState(false);
+  const [contractSaving, setContractSaving] = useState(false);
+  const [contractSaved, setContractSaved] = useState(false);
+
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
@@ -146,6 +154,8 @@ export default function SettingsPage() {
           custom_domain: p.brand_settings.custom_domain || '',
         }));
       }
+      // Load contract template
+      setContractTemplate(p.contract_template || DEFAULT_CONTRACT);
     }
     setLoading(false);
   }
@@ -455,6 +465,91 @@ export default function SettingsPage() {
                   <span className="text-sm text-emerald-300">Updated end times on {syncedJobs} existing job{syncedJobs !== 1 ? 's' : ''}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ==================== CONTRACT TEMPLATE ==================== */}
+          {activeTab === 'contract' && (
+            <div className="space-y-6">
+              <Section title="Contract Template" description="Your contract auto-fills with client and job details when sent. Conditional sections are included only when relevant.">
+                {!contractEditing ? (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-5 max-h-[500px] overflow-y-auto">
+                      <pre className="text-xs text-slate-400 whitespace-pre-wrap font-sans leading-relaxed">{contractTemplate}</pre>
+                    </div>
+                    <Button size="sm" onClick={() => setContractEditing(true)}><Pencil className="w-3.5 h-3.5" />Edit Template</Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <textarea
+                      value={contractTemplate}
+                      onChange={(e) => setContractTemplate(e.target.value)}
+                      rows={30}
+                      className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all font-mono resize-y leading-relaxed"
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="rounded-lg border border-white/[0.06] p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Merge Tags</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {['{{client_name}}', '{{client_email}}', '{{job_date}}', '{{job_time}}', '{{job_location}}', '{{package_name}}', '{{package_amount}}', '{{included_images}}', '{{business_name}}', '{{photographer_name}}', '{{today_date}}'].map((tag) => (
+                            <button key={tag} type="button" onClick={() => setContractTemplate((prev) => prev + tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-indigo-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{tag}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-white/[0.06] p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Conditional Blocks</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {[
+                            { tag: '{{#if deposit}}...{{/if}}', desc: 'Deposit required' },
+                            { tag: '{{#if no_deposit}}...{{/if}}', desc: 'No deposit' },
+                            { tag: '{{#if second_shooter}}...{{/if}}', desc: 'Second shooter' },
+                            { tag: '{{#if minors}}...{{/if}}', desc: 'Minors present' },
+                          ].map((item) => (
+                            <button key={item.tag} type="button" onClick={() => setContractTemplate((prev) => prev + '\n' + item.tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-amber-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{item.desc}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!photographer) return;
+                          setContractSaving(true);
+                          const sb = createSupabaseClient();
+                          const { error } = await sb
+                            .from('photographers')
+                            .update({ contract_template: contractTemplate })
+                            .eq('id', photographer.id);
+                          setContractSaving(false);
+                          if (!error) {
+                            setContractEditing(false);
+                            setContractSaved(true);
+                            setTimeout(() => setContractSaved(false), 2000);
+                          }
+                        }}
+                        disabled={contractSaving}
+                      >
+                        {contractSaved ? <><Check className="w-3.5 h-3.5" />Saved</> : contractSaving ? 'Saving...' : <><Save className="w-3.5 h-3.5" />Save Template</>}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setContractEditing(false)}>Cancel</Button>
+                      <button onClick={() => setContractTemplate(DEFAULT_CONTRACT)} className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors ml-auto">Reset to default</button>
+                    </div>
+                  </div>
+                )}
+              </Section>
+
+              <div className="rounded-lg border border-white/[0.06] p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">How it works</p>
+                <div className="space-y-1.5 text-xs text-slate-500">
+                  <p>• Merge tags like <span className="text-indigo-400">{'{{client_name}}'}</span> are replaced with real data when the contract is generated.</p>
+                  <p>• Conditional blocks like <span className="text-amber-400">{'{{#if deposit}}'}</span> are only included when relevant.</p>
+                  <p>• The contract adapts automatically — you write one template, it handles every job type.</p>
+                  <p>• Clients receive a link to view and electronically sign the contract.</p>
+                </div>
+              </div>
             </div>
           )}
 
