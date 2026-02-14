@@ -1,114 +1,50 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import {
-  getProcessingJobs,
-  getStyleProfiles,
-  createStyleProfile,
-  deleteStyleProfile,
-} from '@/lib/queries';
-import type { ProcessingJob, StyleProfile } from '@/lib/types';
-import { ProcessingCard, StyleCard } from '@/components/editing/editing-cards';
+import { getProcessingJobs } from '@/lib/queries';
+import type { ProcessingJob } from '@/lib/types';
+import { ProcessingCard } from '@/components/editing/editing-cards';
 import { ReviewWorkspace } from '@/components/editing/review-workspace';
 import { PhotoUpload } from '@/components/editing/photo-upload';
-import { CreateStyleFlow } from '@/components/editing/style-upload';
 import {
   generateMockProcessingJobs,
-  generateMockStyles,
   type ProcessingJobWithGallery,
 } from '@/components/editing/mock-data';
 import {
-  Wand2, Plus, CheckCircle2, Sparkles, Palette, Upload, Eye,
+  Wand2, CheckCircle2, Sparkles, Eye,
   Clock, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 
-type TabId = 'upload' | 'queue' | 'review' | 'styles';
+type TabId = 'upload' | 'queue' | 'review';
 
-// ============================================
-// Main Page
-// ============================================
 export default function EditingPage() {
   const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
-  const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingJob, setReviewingJob] = useState<ProcessingJobWithGallery | null>(null);
-  const [showCreateStyle, setShowCreateStyle] = useState(false);
   const [useMockData, setUseMockData] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pjData, styleData] = await Promise.all([
-        getProcessingJobs(),
-        getStyleProfiles(),
-      ]);
+      const pjData = await getProcessingJobs();
 
-      if (pjData.length === 0 && styleData.length === 0) {
+      if (pjData.length === 0) {
         setUseMockData(true);
         setProcessingJobs(generateMockProcessingJobs());
-        setStyles(generateMockStyles());
       } else {
         setProcessingJobs(pjData as ProcessingJobWithGallery[]);
-        setStyles(styleData);
       }
     } catch (err) {
       console.error('Error loading editing data:', err);
       setUseMockData(true);
       setProcessingJobs(generateMockProcessingJobs());
-      setStyles(generateMockStyles());
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  const handleCreateStyle = async (name: string, description: string, config: Record<string, any>, imageKeys: string[]) => {
-    if (useMockData) {
-      const newStyle: StyleProfile = {
-        id: `sp-new-${Date.now()}`,
-        photographer_id: 'p-1',
-        name,
-        description,
-        reference_image_keys: imageKeys.length > 0 ? imageKeys : Array.from({ length: 150 }, (_, i) => `ref/new/img_${i}.jpg`),
-        settings: config,
-        status: imageKeys.length > 0 ? 'training' : 'pending',
-        training_started_at: imageKeys.length > 0 ? new Date().toISOString() : undefined,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setStyles((prev) => [newStyle, ...prev]);
-    } else {
-      const result = await createStyleProfile({ name, description, settings: config });
-      if (result) {
-        // Update with image keys
-        const { createClient } = await import('@/lib/supabase/client');
-        const sb = createClient();
-        await sb.from('style_profiles').update({
-          reference_image_keys: imageKeys,
-          status: 'training',
-          training_started_at: new Date().toISOString(),
-        }).eq('id', result.id);
-        setStyles((prev) => [{
-          ...result,
-          reference_image_keys: imageKeys,
-          status: 'training' as const,
-          training_started_at: new Date().toISOString(),
-        }, ...prev]);
-      }
-    }
-  };
-
-  const handleDeleteStyle = async (id: string) => {
-    if (useMockData) {
-      setStyles((prev) => prev.filter((s) => s.id !== id));
-    } else {
-      const ok = await deleteStyleProfile(id);
-      if (ok) setStyles((prev) => prev.filter((s) => s.id !== id));
-    }
-  };
 
   if (loading) {
     return (
@@ -147,7 +83,6 @@ export default function EditingPage() {
           { id: 'upload' as TabId, label: 'Upload Photos', count: undefined },
           { id: 'queue' as TabId, label: 'Processing Queue', count: queuedCount > 0 ? queuedCount : undefined },
           { id: 'review' as TabId, label: 'Ready for Review', count: completedCount > 0 ? completedCount : undefined },
-          { id: 'styles' as TabId, label: 'Style Profiles', count: styles.length > 0 ? styles.length : undefined },
         ]).map((tab) => (
           <button
             key={tab.id}
@@ -227,32 +162,6 @@ export default function EditingPage() {
           )}
         </div>
       )}
-
-      {/* Styles tab */}
-      {activeTab === 'styles' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-500">
-              Style profiles teach the AI your editing look. Upload 50–200 reference images and the AI learns your style.
-            </p>
-            <Button size="sm" onClick={() => setShowCreateStyle(true)}>
-              <Plus className="w-3.5 h-3.5" />New Style
-            </Button>
-          </div>
-
-          {styles.length === 0 ? (
-            <EmptyState icon={Palette} title="No style profiles" description="Create a style profile to teach the AI your editing look. Upload 50–200 reference images to get started." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {styles.map((profile) => (
-                <StyleCard key={profile.id} profile={profile} onDelete={handleDeleteStyle} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      <CreateStyleFlow open={showCreateStyle} onClose={() => setShowCreateStyle(false)} onCreate={handleCreateStyle} />
     </div>
   );
 }

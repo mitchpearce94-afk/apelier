@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/form-fields';
 import { cn, formatCurrency } from '@/lib/utils';
-import { getCurrentPhotographer } from '@/lib/queries';
+import { getCurrentPhotographer, getStyleProfiles, createStyleProfile } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import {
   User, Package, Palette, Bell, CreditCard, FileSignature,
   Plus, Trash2, Save, Check, Pencil, Upload, ImageIcon,
+  Wand2, Sparkles, Camera, X, Loader2,
 } from 'lucide-react';
 import type { Photographer } from '@/lib/types';
 import { DEFAULT_CONTRACT } from '@/lib/default-contract';
@@ -31,13 +32,14 @@ interface PackageItem {
   deposit_percent: number;
 }
 
-type SettingsTab = 'profile' | 'packages' | 'contract' | 'branding' | 'notifications' | 'billing';
+type SettingsTab = 'profile' | 'packages' | 'contract' | 'branding' | 'editing_style' | 'notifications' | 'billing';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'profile', label: 'Business Profile', icon: User },
   { id: 'packages', label: 'Packages', icon: Package },
   { id: 'contract', label: 'Contract Template', icon: FileSignature },
   { id: 'branding', label: 'Branding', icon: Palette },
+  { id: 'editing_style', label: 'Editing Style', icon: Wand2 },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing', label: 'Billing', icon: CreditCard },
 ];
@@ -725,6 +727,10 @@ export default function SettingsPage() {
           )}
 
           {/* ==================== BILLING ==================== */}
+          {activeTab === 'editing_style' && (
+            <EditingStyleSection photographerId={photographer?.id} />
+          )}
+
           {activeTab === 'billing' && (
             <div className="space-y-6">
               <Section title="Current Plan" description="Manage your Aperture Suite subscription.">
@@ -759,6 +765,365 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// Editing Style Section
+// ============================================
+
+const STYLE_MIN_IMAGES = 100;
+const STYLE_RECOMMENDED = 200;
+const STYLE_MAX_IMAGES = 300;
+const STYLE_ACCEPTED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif'];
+
+interface StyleFile {
+  id: string;
+  file: File;
+  status: 'pending' | 'uploading' | 'complete' | 'error';
+}
+
+function EditingStyleSection({ photographerId }: { photographerId?: string }) {
+  const [files, setFiles] = useState<StyleFile[]>([]);
+  const [existingCount, setExistingCount] = useState(0);
+  const [styleStatus, setStyleStatus] = useState<'none' | 'pending' | 'training' | 'ready' | 'error'>('none');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [loadingStyle, setLoadingStyle] = useState(true);
+  const [trainingDate, setTrainingDate] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    async function loadStyle() {
+      try {
+        const profiles = await getStyleProfiles();
+        if (profiles.length > 0) {
+          const active = profiles[0];
+          setExistingCount(active.reference_image_keys?.length || 0);
+          setStyleStatus(active.status as any);
+          setTrainingDate(active.training_completed_at || active.training_started_at || null);
+        }
+      } catch (err) {
+        console.error('Error loading style:', err);
+      }
+      setLoadingStyle(false);
+    }
+    loadStyle();
+  }, []);
+
+  const addFiles = useCallback((newFiles: FileList | File[]) => {
+    const remaining = STYLE_MAX_IMAGES - files.length - existingCount;
+    const toAdd = Array.from(newFiles).slice(0, Math.max(0, remaining));
+
+    const mapped: StyleFile[] = toAdd
+      .filter((f) => {
+        const ext = '.' + f.name.split('.').pop()?.toLowerCase();
+        return STYLE_ACCEPTED_EXT.includes(ext);
+      })
+      .map((file) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        status: 'pending' as const,
+      }));
+
+    setFiles((prev) => [...prev, ...mapped]);
+  }, [files.length, existingCount]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+  }, [addFiles]);
+
+  const removeFile = (id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+    const totalImages = files.length + existingCount;
+    if (totalImages < STYLE_MIN_IMAGES) return;
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    try {
+      const photographer = await getCurrentPhotographer();
+      if (!photographer) { setUploading(false); return; }
+
+      const imageKeys: string[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'uploading' } : p));
+
+        try {
+          const safeName = f.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storageKey = `${photographer.id}/style/${Date.now()}_${safeName}`;
+
+          const sb = createSupabaseClient();
+          const { data, error } = await sb.storage
+            .from('photos')
+            .upload(storageKey, f.file, { cacheControl: '3600', upsert: false });
+
+          if (error) throw error;
+          imageKeys.push(data.path);
+          setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'complete' } : p));
+        } catch {
+          setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'error' } : p));
+        }
+
+        setUploadProgress(Math.round(((i + 1) / files.length) * 100));
+      }
+
+      // Create or update style profile
+      const profiles = await getStyleProfiles();
+      const sb = createSupabaseClient();
+
+      if (profiles.length > 0) {
+        const existing = profiles[0];
+        const allKeys = [...(existing.reference_image_keys || []), ...imageKeys];
+        await sb.from('style_profiles').update({
+          reference_image_keys: allKeys,
+          status: 'training',
+          training_started_at: new Date().toISOString(),
+        }).eq('id', existing.id);
+        setExistingCount(allKeys.length);
+      } else {
+        await createStyleProfile({ name: 'My Style', description: '' });
+        const newProfiles = await getStyleProfiles();
+        if (newProfiles.length > 0) {
+          await sb.from('style_profiles').update({
+            reference_image_keys: imageKeys,
+            status: 'training',
+            training_started_at: new Date().toISOString(),
+          }).eq('id', newProfiles[0].id);
+          setExistingCount(imageKeys.length);
+        }
+      }
+
+      setStyleStatus('training');
+      setTrainingDate(new Date().toISOString());
+      setFiles([]);
+    } catch (err) {
+      console.error('Upload error:', err);
+    }
+
+    setUploading(false);
+  };
+
+  const totalImages = files.length + existingCount;
+  const countStatus = totalImages < STYLE_MIN_IMAGES ? 'insufficient' : totalImages < STYLE_RECOMMENDED ? 'good' : 'excellent';
+
+  if (loadingStyle) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Section
+        title="Editing Style"
+        description="Upload your edited work and the AI will learn your style — colours, tones, contrast, skin handling, everything."
+      >
+        {/* Current status */}
+        {styleStatus !== 'none' && (
+          <div className={`rounded-xl border p-4 ${
+            styleStatus === 'ready' ? 'border-emerald-500/20 bg-emerald-500/5'
+              : styleStatus === 'training' ? 'border-amber-500/20 bg-amber-500/5'
+              : styleStatus === 'error' ? 'border-red-500/20 bg-red-500/5'
+              : 'border-white/[0.06] bg-white/[0.02]'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  styleStatus === 'ready' ? 'bg-emerald-500/20' : styleStatus === 'training' ? 'bg-amber-500/20' : 'bg-white/[0.06]'
+                }`}>
+                  {styleStatus === 'ready' ? <Check className="w-5 h-5 text-emerald-400" />
+                    : styleStatus === 'training' ? <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                    : <Wand2 className="w-5 h-5 text-slate-500" />}
+                </div>
+                <div>
+                  <p className={`text-sm font-medium ${
+                    styleStatus === 'ready' ? 'text-emerald-300' : styleStatus === 'training' ? 'text-amber-300' : 'text-slate-300'
+                  }`}>
+                    {styleStatus === 'ready' ? 'Style Trained' : styleStatus === 'training' ? 'Training in Progress' : 'Pending'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {existingCount} reference images uploaded
+                    {trainingDate && ` · ${styleStatus === 'ready' ? 'Trained' : 'Started'} ${new Date(trainingDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* How it works (only show if no style yet) */}
+        {styleStatus === 'none' && (
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-200 mb-1">Teach the AI your editing style</p>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Upload 100–300 of your best edited images (JPEGs). The AI will analyse them and learn your unique style — 
+                  exposure, colour grading, white balance, contrast, tone curves, skin tone handling, saturation, grain, 
+                  sharpening, and how you keep everything consistent across different scenes and lighting. 
+                  Every shoot you process will automatically be edited to match your look.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image count bar */}
+        <div>
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="text-slate-400">
+              {totalImages} image{totalImages !== 1 ? 's' : ''}
+              {files.length > 0 && existingCount > 0 && ` (${existingCount} existing + ${files.length} new)`}
+            </span>
+            <span className={`font-medium ${
+              countStatus === 'insufficient' ? 'text-red-400' : countStatus === 'good' ? 'text-amber-400' : 'text-emerald-400'
+            }`}>
+              {countStatus === 'insufficient' ? `Need ${STYLE_MIN_IMAGES - totalImages} more` : countStatus === 'good' ? 'Good — more is better' : 'Excellent'}
+            </span>
+          </div>
+          <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all duration-300 rounded-full ${
+                countStatus === 'insufficient' ? 'bg-red-500' : countStatus === 'good' ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${Math.min((totalImages / STYLE_MAX_IMAGES) * 100, 100)}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-[9px] text-slate-600 mt-1">
+            <span>0</span>
+            <span>{STYLE_MIN_IMAGES} min</span>
+            <span>{STYLE_RECOMMENDED} ideal</span>
+            <span>{STYLE_MAX_IMAGES}</span>
+          </div>
+        </div>
+
+        {/* Drop zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onClick={() => !uploading && fileInputRef.current?.click()}
+          className={`rounded-xl border-2 border-dashed transition-all cursor-pointer ${
+            dragOver ? 'border-indigo-500 bg-indigo-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
+          } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={STYLE_ACCEPTED_EXT.join(',')}
+            onChange={(e) => e.target.files && addFiles(e.target.files)}
+            className="hidden"
+          />
+
+          {files.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 px-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-3">
+                <Upload className="w-5 h-5 text-indigo-400" />
+              </div>
+              <p className="text-sm font-medium text-slate-200 mb-1">
+                {existingCount > 0 ? 'Add more reference images' : 'Drop your edited photos here'}
+              </p>
+              <p className="text-xs text-slate-500">JPEG, PNG, TIFF — your finished, edited work</p>
+            </div>
+          ) : (
+            <div className="p-3" onClick={(e) => e.stopPropagation()}>
+              <div className="grid grid-cols-8 sm:grid-cols-10 gap-1 max-h-40 overflow-y-auto">
+                {files.map((f) => (
+                  <div key={f.id} className="relative aspect-square rounded bg-white/[0.04] flex items-center justify-center group">
+                    <Camera className={`w-3 h-3 ${
+                      f.status === 'complete' ? 'text-emerald-600' : f.status === 'error' ? 'text-red-600' : f.status === 'uploading' ? 'text-indigo-400' : 'text-slate-700'
+                    }`} />
+                    {f.status === 'complete' && (
+                      <div className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <Check className="w-1.5 h-1.5 text-white" />
+                      </div>
+                    )}
+                    {f.status === 'uploading' && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded">
+                        <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />
+                      </div>
+                    )}
+                    {f.status === 'pending' && !uploading && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2 h-2 text-white" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {totalImages < STYLE_MAX_IMAGES && !uploading && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="aspect-square rounded border border-dashed border-white/[0.1] flex items-center justify-center hover:border-indigo-500/40 hover:bg-indigo-500/5 transition-all"
+                  >
+                    <span className="text-lg text-slate-600">+</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tips */}
+        {totalImages < STYLE_MIN_IMAGES && files.length === 0 && (
+          <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] p-3">
+            <p className="text-[11px] font-medium text-slate-300 mb-1.5">For best results, include a mix of:</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-500">
+              <span>• Indoor & outdoor shots</span>
+              <span>• Different skin tones</span>
+              <span>• Natural light & flash</span>
+              <span>• Ceremony & reception</span>
+              <span>• Golden hour & overcast</span>
+              <span>• Portraits & details</span>
+            </div>
+          </div>
+        )}
+
+        {/* Upload progress */}
+        {uploading && (
+          <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+              <span className="text-xs font-medium text-indigo-300">Uploading... {uploadProgress}%</span>
+            </div>
+            <div className="h-1.5 bg-indigo-500/10 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* Upload button */}
+        {files.length > 0 && !uploading && (
+          <div className="flex items-center justify-between">
+            <button onClick={() => setFiles([])} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+              Clear {files.length} files
+            </button>
+            <Button size="sm" onClick={handleUpload} disabled={totalImages < STYLE_MIN_IMAGES}>
+              <Upload className="w-3 h-3" />
+              {existingCount > 0 ? `Upload ${files.length} & Retrain` : `Upload ${files.length} & Train`}
+            </Button>
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
