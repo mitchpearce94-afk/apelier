@@ -172,7 +172,7 @@ export interface Contract {
 // Gallery & AI Types
 // ============================================
 
-export type GalleryStatus = 'draft' | 'processing' | 'ready' | 'delivered' | 'expired' | 'archived';
+export type GalleryStatus = 'processing' | 'ready' | 'delivered' | 'expired' | 'archived';
 export type GalleryAccessType = 'password' | 'email' | 'public' | 'private';
 
 export interface Gallery {

@@ -819,7 +819,7 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
       job_id: jobId,
       client_id: job?.client_id || null,
       title,
-      status: 'draft',
+      status: 'ready',
       access_type: defaultAccessType,
       view_count: 0,
       expires_at: expiresAt,

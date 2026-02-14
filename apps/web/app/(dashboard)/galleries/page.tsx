@@ -14,7 +14,7 @@ import {
   Lock, Globe, Mail, Sparkles, Camera, ExternalLink,
 } from 'lucide-react';
 
-type FilterStatus = 'all' | 'ready' | 'delivered' | 'processing' | 'draft';
+type FilterStatus = 'all' | 'ready' | 'delivered' | 'processing';
 
 function GalleryCard({ gallery, onClick }: { gallery: Gallery; onClick: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -164,7 +164,6 @@ export default function GalleriesPage() {
     ready: galleries.filter((g) => g.status === 'ready').length,
     delivered: galleries.filter((g) => g.status === 'delivered').length,
     processing: galleries.filter((g) => g.status === 'processing').length,
-    draft: galleries.filter((g) => g.status === 'draft').length,
   };
 
   return (
