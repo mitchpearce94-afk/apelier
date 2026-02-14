@@ -8,7 +8,7 @@ import { generateMockPhotos } from './mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Camera, SlidersHorizontal,
   MessageSquare, Check, X, Star, Filter, ArrowLeft, Send,
-  AlertCircle,
+  AlertCircle, ImageIcon, Share2, Loader2,
 } from 'lucide-react';
 
 export function ReviewWorkspace({ processingJob, onBack }: { processingJob: ProcessingJobWithGallery; onBack: () => void }) {
@@ -20,6 +20,8 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   const [promptText, setPromptText] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sendingToGallery, setSendingToGallery] = useState(false);
+  const [sentToGallery, setSentToGallery] = useState(false);
 
   useEffect(() => {
     const mockPhotos = generateMockPhotos();
@@ -83,6 +85,27 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       return next;
     });
   };
+
+  const handleSendToGallery = async () => {
+    setSendingToGallery(true);
+
+    // Simulate the process — in production this would:
+    // 1. Update all approved photos status to 'delivered'
+    // 2. Update the gallery status to 'ready' 
+    // 3. Update the job status to 'delivered'
+    // 4. Trigger the delivery automation (gallery link, email to client, etc.)
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    setPhotos((prev) => prev.map((p) =>
+      p.status === 'approved' ? { ...p, status: 'delivered' as const } : p
+    ));
+
+    setSendingToGallery(false);
+    setSentToGallery(true);
+  };
+
+  const approvedCount = photos.filter((p) => p.status === 'approved').length;
+  const allReviewed = stats.edited === 0 && stats.approved > 0;
 
   if (loading) {
     return (
@@ -399,6 +422,52 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
           );
         })}
       </div>
+
+      {/* Send to Gallery */}
+      {sentToGallery ? (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <Check className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-emerald-300">Sent to Gallery</p>
+              <p className="text-xs text-emerald-400/70 mt-0.5">
+                {approvedCount} photos have been sent to the client gallery. The delivery email and all post-delivery automations have been triggered.
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={onBack}>
+              <ArrowLeft className="w-3 h-3" />Back to Queue
+            </Button>
+          </div>
+        </div>
+      ) : approvedCount > 0 && !selectMode && (
+        <div className="sticky bottom-0 -mx-1 px-1 pb-1 pt-3 bg-gradient-to-t from-[#07070d] via-[#07070d] to-transparent">
+          <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                <ImageIcon className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {approvedCount} photo{approvedCount !== 1 ? 's' : ''} approved
+                  {stats.edited > 0 && <span className="text-slate-500"> · {stats.edited} still unreviewed</span>}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  This will create the client gallery, send the delivery email, and start all post-delivery automations
+                </p>
+              </div>
+            </div>
+            <Button size="sm" onClick={handleSendToGallery} disabled={sendingToGallery} className="flex-shrink-0">
+              {sendingToGallery ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" />Sending...</>
+              ) : (
+                <><Share2 className="w-3.5 h-3.5" />Approve &amp; Send to Gallery</>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
