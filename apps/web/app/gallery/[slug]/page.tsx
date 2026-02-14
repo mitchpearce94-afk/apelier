@@ -96,12 +96,16 @@ function ClientLightbox({ photo, photos, onClose, onPrev, onNext, onToggleFav }:
           <ChevronLeft className="w-8 h-8" />
         </button>
         <div className="max-w-[90vw] max-h-[80vh] flex items-center justify-center">
-          <div className="w-[800px] max-w-full aspect-[3/2] bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <Camera className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">{photo.filename}</p>
+          {(photo as any).preview_url ? (
+            <img src={(photo as any).preview_url.replace('/800/533', '/1200/800')} alt={photo.filename} className="max-w-full max-h-[80vh] rounded-lg object-contain" />
+          ) : (
+            <div className="w-[800px] max-w-full aspect-[3/2] bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg flex items-center justify-center">
+              <div className="text-center">
+                <Camera className="w-12 h-12 text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">{photo.filename}</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="absolute right-2 sm:right-6 p-2 text-white/30 hover:text-white transition-colors">
           <ChevronRight className="w-8 h-8" />
@@ -300,10 +304,13 @@ export default function PublicGalleryPage() {
             {displayPhotos.map(photo => (
               <div key={photo.id} className="relative group cursor-pointer" onClick={() => setLightboxPhoto(photo)}>
                 <div className={`${gridSize === 'large' ? 'aspect-[4/3]' : 'aspect-square'} rounded-lg overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200`}>
-                  {/* Placeholder — real images from Supabase Storage URL */}
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Camera className="w-6 h-6 text-gray-300" />
-                  </div>
+                  {(photo as any).preview_url ? (
+                    <img src={(photo as any).preview_url} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Camera className="w-6 h-6 text-gray-300" />
+                    </div>
+                  )}
 
                   {/* Hover overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg">

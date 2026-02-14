@@ -91,7 +91,7 @@ export function generateMockGalleries(): Gallery[] {
   ];
 }
 
-export function generateMockGalleryPhotos(count: number = 24): Photo[] {
+export function generateMockGalleryPhotos(count: number = 24): (Photo & { preview_url?: string })[] {
   const scenes = ['ceremony', 'reception', 'portraits', 'details', 'getting-ready', 'first-dance'];
   return Array.from({ length: count }, (_, i) => ({
     id: `gp-${i}`,
@@ -120,5 +120,7 @@ export function generateMockGalleryPhotos(count: number = 24): Photo[] {
     needs_review: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    // Sample photography images — different seed per photo for variety
+    preview_url: `https://picsum.photos/seed/aperture${i + 100}/800/533`,
   }));
 }

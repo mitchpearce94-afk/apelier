@@ -48,13 +48,17 @@ function PhotoLightbox({ photo, photos, onClose, onPrev, onNext }: {
         <ChevronRight className="w-8 h-8" />
       </button>
       <div className="max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-        <div className="w-[800px] h-[533px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center">
-          <div className="text-center">
-            <Camera className="w-12 h-12 text-slate-600 mx-auto mb-2" />
-            <p className="text-sm text-slate-500">{photo.filename}</p>
-            <p className="text-xs text-slate-600 mt-1">{photo.width}×{photo.height}</p>
+        {(photo as any).preview_url ? (
+          <img src={(photo as any).preview_url.replace('/800/533', '/1200/800')} alt={photo.filename} className="max-w-full max-h-[85vh] rounded-lg object-contain" />
+        ) : (
+          <div className="w-[800px] h-[533px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center">
+            <div className="text-center">
+              <Camera className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">{photo.filename}</p>
+              <p className="text-xs text-slate-600 mt-1">{photo.width}×{photo.height}</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 text-xs text-white/60">
         <span>{idx + 1} / {photos.length}</span>
@@ -291,15 +295,21 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
         </div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1.5 sm:gap-2">
-          {filtered.map((photo) => (
+          {filtered.map((photo) => {
+            const previewUrl = (photo as any).preview_url;
+            return (
             <div
               key={photo.id}
               onClick={() => setLightboxPhoto(photo)}
               className="relative aspect-square rounded-lg overflow-hidden cursor-pointer group bg-gradient-to-br from-slate-900 to-slate-800 hover:ring-1 hover:ring-white/20 transition-all"
             >
-              <div className="w-full h-full flex items-center justify-center">
-                <Camera className="w-5 h-5 text-slate-700" />
-              </div>
+              {previewUrl ? (
+                <img src={previewUrl} alt={photo.filename} className="w-full h-full object-cover" loading="lazy" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Camera className="w-5 h-5 text-slate-700" />
+                </div>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between">
                   <span className="text-[9px] text-white/80 truncate">{photo.filename}</span>
@@ -317,69 +327,76 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Sticky bottom bar */}
+      {/* Bottom bar */}
       {gallery.status === 'ready' && (
-        <div className="sticky bottom-0 z-40 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <Send className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-white">Ready to deliver</p>
-                <p className="text-[11px] text-slate-500">
-                  {photos.length} photos · {gallery.access_type} access
-                  {gallery.expires_at ? ` · expires ${formatDate(gallery.expires_at, 'short')}` : ' · no expiry'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {showDeliverConfirm ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 hidden sm:inline">Send gallery email to {clientName}?</span>
-                  <Button size="sm" onClick={handleDeliver} disabled={delivering}>
-                    {delivering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                    Confirm
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => setShowDeliverConfirm(false)}>
-                    Cancel
-                  </Button>
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-3 lg:pl-[264px] lg:px-6 pb-3 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
+          <div className="pointer-events-auto">
+            <div className="rounded-xl border border-emerald-500/20 bg-[#0c0c16] p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between shadow-2xl shadow-black/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                  <Send className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                 </div>
-              ) : (
-                <Button size="sm" onClick={() => setShowDeliverConfirm(true)}>
-                  <Share2 className="w-3 h-3" />Deliver to Client
-                </Button>
-              )}
+                <div>
+                  <p className="text-xs sm:text-sm font-medium text-white">Ready to deliver</p>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500">
+                    {photos.length} photos · {gallery.access_type} access
+                    {gallery.expires_at ? ` · expires ${formatDate(gallery.expires_at, 'short')}` : ' · no expiry'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                {showDeliverConfirm ? (
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-xs text-slate-400 hidden sm:inline">Send gallery email to {clientName}?</span>
+                    <Button size="sm" onClick={handleDeliver} disabled={delivering}>
+                      {delivering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      Confirm
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setShowDeliverConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" onClick={() => setShowDeliverConfirm(true)} className="w-full sm:w-auto">
+                    <Share2 className="w-3 h-3" />Deliver to Client
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {gallery.status === 'delivered' && (
-        <div className="sticky bottom-0 z-40 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-[#0a0a14]/95 backdrop-blur-md border-t border-white/[0.06]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                <Check className="w-4 h-4 text-emerald-400" />
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-3 lg:pl-[264px] lg:px-6 pb-3 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
+          <div className="pointer-events-auto">
+            <div className="rounded-xl border border-emerald-500/20 bg-[#0c0c16] p-3 sm:p-4 flex items-center justify-between shadow-2xl shadow-black/50">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-semibold text-emerald-400">Delivered</p>
+                  <p className="text-[10px] sm:text-[11px] text-slate-500">
+                    {photos.length} photos · {gallery.view_count} view{gallery.view_count !== 1 ? 's' : ''}
+                    {gallery.expires_at ? ` · expires ${formatDate(gallery.expires_at, 'short')}` : ''}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-emerald-400">Delivered</p>
-                <p className="text-[11px] text-slate-500">
-                  {photos.length} photos · {gallery.view_count} view{gallery.view_count !== 1 ? 's' : ''}
-                  {gallery.expires_at ? ` · expires ${formatDate(gallery.expires_at, 'short')}` : ''}
-                </p>
-              </div>
+              <Button size="sm" variant="secondary" onClick={() => window.open(galleryUrl, '_blank')}>
+                <ExternalLink className="w-3 h-3" />View as Client
+              </Button>
             </div>
-            <Button size="sm" variant="secondary" onClick={() => window.open(galleryUrl, '_blank')}>
-              <ExternalLink className="w-3 h-3" />View as Client
-            </Button>
           </div>
         </div>
       )}
+
+      {(gallery.status === 'ready' || gallery.status === 'delivered') && <div className="h-20" />}
     </div>
   );
 }
