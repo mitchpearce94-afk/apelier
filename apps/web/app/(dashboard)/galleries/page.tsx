@@ -179,7 +179,7 @@ export default function GalleriesPage() {
       {useMockData && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
           <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Showing demo data — galleries will appear here once you send photos from Auto Editing.</span>
+          <span>Showing demo data — galleries will appear here once you send photos from Auto Editor.</span>
         </div>
       )}
 
@@ -220,7 +220,7 @@ export default function GalleriesPage() {
         <EmptyState
           icon={ImageIcon}
           title={filter !== 'all' ? 'No galleries match this filter' : 'No galleries yet'}
-          description={filter !== 'all' ? 'Try a different filter or search term.' : 'Galleries are created automatically when you send photos from Auto Editing.'}
+          description={filter !== 'all' ? 'Try a different filter or search term.' : 'Galleries are created automatically when you send photos from Auto Editor.'}
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">

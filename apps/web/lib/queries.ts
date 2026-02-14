@@ -686,7 +686,7 @@ export async function deleteStyleProfile(id: string): Promise<boolean> {
 }
 
 // ============================================
-// Jobs with editing status (for Auto Editing page)
+// Jobs with editing status (for Auto Editor page)
 // ============================================
 
 export async function getEditingJobs(): Promise<Job[]> {
@@ -801,6 +801,17 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
   const sb = supabase();
   const { data: job } = await sb.from('jobs').select('client_id').eq('id', jobId).single();
 
+  // Use photographer's global gallery defaults
+  const p = photographer as any;
+  const defaultAccessType = p.gallery_default_access_type || 'password';
+  const defaultExpiryDays = p.gallery_default_expiry_days ?? 30;
+  const defaultDownloadFullRes = p.gallery_default_download_full_res ?? true;
+  const defaultDownloadWeb = p.gallery_default_download_web ?? true;
+
+  const expiresAt = defaultExpiryDays > 0
+    ? new Date(Date.now() + defaultExpiryDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
   const { data, error } = await sb
     .from('galleries')
     .insert({
@@ -809,9 +820,14 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
       client_id: job?.client_id || null,
       title,
       status: 'draft',
-      access_type: 'private',
+      access_type: defaultAccessType,
       view_count: 0,
-      download_permissions: { allow_full_res: true, allow_web: true, allow_favorites_only: false },
+      expires_at: expiresAt,
+      download_permissions: {
+        allow_full_res: defaultDownloadFullRes,
+        allow_web: defaultDownloadWeb,
+        allow_favorites_only: false,
+      },
     })
     .select()
     .single();
