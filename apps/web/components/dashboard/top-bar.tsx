@@ -54,7 +54,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   };
 
   return (
-    <header className="flex items-center justify-between h-14 lg:h-16 px-4 lg:px-6 border-b border-white/[0.06] bg-[#07070d]/95 backdrop-blur-md flex-shrink-0 z-30 max-w-full overflow-hidden">
+    <header className="flex items-center justify-between h-14 lg:h-16 px-4 lg:px-6 border-b border-white/[0.06] bg-[#07070d]/95 backdrop-blur-md flex-shrink-0 z-30 max-w-full">
       {/* Left side */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {/* Hamburger — mobile only */}
