@@ -703,3 +703,137 @@ export async function getEditingJobs(): Promise<Job[]> {
   }
   return data || [];
 }
+
+// ============================================
+// Storage & Photo Upload
+// ============================================
+
+export interface UploadProgress {
+  file: File;
+  progress: number;
+  status: 'pending' | 'uploading' | 'complete' | 'error';
+  error?: string;
+  photoId?: string;
+}
+
+export async function uploadPhotoToStorage(
+  file: File,
+  photographerId: string,
+  galleryId: string,
+  onProgress?: (progress: number) => void
+): Promise<{ storageKey: string; publicUrl: string } | null> {
+  const sb = supabase();
+
+  // Path: photos/{photographer_id}/{gallery_id}/originals/{filename}
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const timestamp = Date.now();
+  const storageKey = `${photographerId}/${galleryId}/originals/${timestamp}_${safeName}`;
+
+  const { data, error } = await sb.storage
+    .from('photos')
+    .upload(storageKey, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+
+  if (error) {
+    console.error('Error uploading file:', error);
+    return null;
+  }
+
+  // Get the path (not public URL since bucket is private)
+  return {
+    storageKey: data.path,
+    publicUrl: '', // Private bucket — will use signed URLs when needed
+  };
+}
+
+export async function createPhotoRecord(photo: {
+  gallery_id: string;
+  original_key: string;
+  filename: string;
+  file_size: number;
+  mime_type: string;
+  sort_order: number;
+}): Promise<Photo | null> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create photo');
+    return null;
+  }
+
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('photos')
+    .insert({
+      ...photo,
+      photographer_id: photographer.id,
+      status: 'uploaded',
+      star_rating: 0,
+      is_culled: false,
+      is_favorite: false,
+      is_sneak_peek: false,
+      needs_review: false,
+      exif_data: {},
+      face_data: [],
+      ai_edits: {},
+      manual_edits: {},
+      prompt_edits: [],
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating photo record:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function createGalleryForJob(jobId: string, title: string): Promise<Gallery | null> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile found — cannot create gallery');
+    return null;
+  }
+
+  // Get the job to find client_id
+  const sb = supabase();
+  const { data: job } = await sb.from('jobs').select('client_id').eq('id', jobId).single();
+
+  const { data, error } = await sb
+    .from('galleries')
+    .insert({
+      photographer_id: photographer.id,
+      job_id: jobId,
+      client_id: job?.client_id || null,
+      title,
+      status: 'draft',
+      access_type: 'private',
+      view_count: 0,
+      download_permissions: { allow_full_res: true, allow_web: true, allow_favorites_only: false },
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating gallery:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getUploadableJobs(): Promise<Job[]> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('jobs')
+    .select('*, client:clients(first_name, last_name)')
+    .in('status', ['upcoming', 'in_progress'])
+    .order('date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching uploadable jobs:', error);
+    return [];
+  }
+  return data || [];
+}

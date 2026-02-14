@@ -13,6 +13,7 @@ import {
 import type { ProcessingJob, StyleProfile } from '@/lib/types';
 import { ProcessingCard, StyleCard } from '@/components/editing/editing-cards';
 import { ReviewWorkspace } from '@/components/editing/review-workspace';
+import { PhotoUpload } from '@/components/editing/photo-upload';
 import {
   generateMockProcessingJobs,
   generateMockStyles,
@@ -23,7 +24,7 @@ import {
   Clock, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 
-type TabId = 'queue' | 'review' | 'styles';
+type TabId = 'upload' | 'queue' | 'review' | 'styles';
 
 // ============================================
 // Create Style Modal
@@ -91,7 +92,7 @@ function CreateStyleModal({ open, onClose, onCreate }: { open: boolean; onClose:
 // Main Page
 // ============================================
 export default function EditingPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('queue');
+  const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,6 +190,7 @@ export default function EditingPage() {
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-white/[0.06] -mb-px overflow-x-auto">
         {([
+          { id: 'upload' as TabId, label: 'Upload Photos', count: undefined },
           { id: 'queue' as TabId, label: 'Processing Queue', count: queuedCount > 0 ? queuedCount : undefined },
           { id: 'review' as TabId, label: 'Ready for Review', count: completedCount > 0 ? completedCount : undefined },
           { id: 'styles' as TabId, label: 'Style Profiles', count: styles.length > 0 ? styles.length : undefined },
@@ -212,6 +214,13 @@ export default function EditingPage() {
           </button>
         ))}
       </div>
+
+      {/* Upload tab */}
+      {activeTab === 'upload' && (
+        <div className="max-w-2xl">
+          <PhotoUpload onUploadComplete={() => loadData()} />
+        </div>
+      )}
 
       {/* Queue tab */}
       {activeTab === 'queue' && (
