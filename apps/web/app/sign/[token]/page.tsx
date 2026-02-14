@@ -171,6 +171,7 @@ export default function SignContractPage() {
           status: 'signed',
           signed_at: new Date().toISOString(),
           signature_data: {
+            ...(contract.signature_data || {}),
             signature_image: signatureImage,
             ip_address: ipAddress,
             user_agent: navigator.userAgent,
@@ -258,19 +259,35 @@ export default function SignContractPage() {
               </pre>
 
               {/* Signature display */}
-              {contract.signature_data?.signature_image && (
-                <div className="mt-8 pt-6 border-t border-gray-200">
-                  <p className="text-xs font-medium text-gray-500 mb-3">CLIENT SIGNATURE</p>
-                  <div className="inline-block border-b-2 border-gray-300 pb-1">
-                    <img
-                      src={contract.signature_data.signature_image}
-                      alt="Signature"
-                      className="h-16"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {contract.client?.first_name} {contract.client?.last_name || ''} · {contract.signed_at && new Date(contract.signed_at).toLocaleDateString('en-AU')}
-                  </p>
+              {contract.signature_data && (
+                <div className="mt-8 pt-6 border-t border-gray-200 space-y-6">
+                  {contract.signature_data.photographer_signature && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-3">PHOTOGRAPHER'S SIGNATURE</p>
+                      <div className="inline-block border-b-2 border-gray-300 pb-1">
+                        <img
+                          src={contract.signature_data.photographer_signature}
+                          alt="Photographer signature"
+                          className="h-16"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {contract.signature_data.signature_image && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-3">CLIENT SIGNATURE</p>
+                      <div className="inline-block border-b-2 border-gray-300 pb-1">
+                        <img
+                          src={contract.signature_data.signature_image}
+                          alt="Client signature"
+                          className="h-16"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">
+                        {contract.client?.first_name} {contract.client?.last_name || ''} · {contract.signed_at && new Date(contract.signed_at).toLocaleDateString('en-AU')}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -317,6 +334,21 @@ export default function SignContractPage() {
           </div>
 
           <div className="px-6 py-6 space-y-4">
+            {/* Photographer's signature (if exists) */}
+            {contract.signature_data?.photographer_signature && (
+              <div className="space-y-2 pb-4 border-b border-gray-100">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Photographer's Signature</p>
+                <div className="inline-block border-b-2 border-gray-200 pb-1">
+                  <img
+                    src={contract.signature_data.photographer_signature}
+                    alt="Photographer signature"
+                    className="h-14"
+                  />
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Client Signature</p>
             {/* Signature canvas */}
             <div className="relative">
               <canvas

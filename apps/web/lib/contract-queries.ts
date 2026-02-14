@@ -163,6 +163,9 @@ export async function generateContract(jobId: string): Promise<Contract | null> 
       status: 'sent',
       sent_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+      signature_data: photographer.signature_image
+        ? { photographer_signature: photographer.signature_image }
+        : null,
     })
     .select('*, client:clients(first_name, last_name, email), job:jobs(title, job_number, job_type)')
     .single();
@@ -187,12 +190,25 @@ export async function signContract(
   }
 ): Promise<boolean> {
   const sb = supabase();
+
+  // First get existing signature_data to preserve photographer signature
+  const { data: existing } = await sb
+    .from('contracts')
+    .select('signature_data')
+    .eq('signing_token', signingToken)
+    .single();
+
+  const existingData = existing?.signature_data || {};
+
   const { error } = await sb
     .from('contracts')
     .update({
       status: 'signed',
       signed_at: new Date().toISOString(),
-      signature_data: signatureData,
+      signature_data: {
+        ...existingData,
+        ...signatureData,
+      },
     })
     .eq('signing_token', signingToken)
     .neq('status', 'signed');

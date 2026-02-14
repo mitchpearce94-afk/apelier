@@ -19,6 +19,7 @@ export interface Photographer {
   stripe_customer_id?: string;
   timezone: string;
   contract_template?: string;
+  signature_image?: string;
   next_job_number: number;
   created_at: string;
   updated_at: string;
@@ -162,6 +163,7 @@ export interface Contract {
     signature_image: string;
     ip_address: string;
     user_agent: string;
+    photographer_signature?: string;
   };
   created_at: string;
 }

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { Photographer } from '@/lib/types';
 import { DEFAULT_CONTRACT } from '@/lib/default-contract';
+import { SignaturePad } from '@/components/ui/signature-pad';
 
 // ============================================
 // Types
@@ -125,6 +126,11 @@ export default function SettingsPage() {
   const [contractSaving, setContractSaving] = useState(false);
   const [contractSaved, setContractSaved] = useState(false);
 
+  // Photographer signature
+  const [signatureImage, setSignatureImage] = useState<string | null>(null);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureSaved, setSignatureSaved] = useState(false);
+
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
@@ -156,6 +162,8 @@ export default function SettingsPage() {
       }
       // Load contract template
       setContractTemplate(p.contract_template || DEFAULT_CONTRACT);
+      // Load signature
+      setSignatureImage(p.signature_image || null);
     }
     setLoading(false);
   }
@@ -550,6 +558,39 @@ export default function SettingsPage() {
                   <p>• Clients receive a link to view and electronically sign the contract.</p>
                 </div>
               </div>
+
+              <Section title="Your Signature" description="Your signature appears on every contract you send. Draw it or upload an image of your signature.">
+                <SignaturePad
+                  onSignatureChange={(dataUrl) => setSignatureImage(dataUrl)}
+                  initialSignature={signatureImage}
+                  theme="dark"
+                  allowUpload={true}
+                  label=""
+                  height={140}
+                />
+                <div className="flex items-center gap-3 pt-1">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      if (!photographer) return;
+                      setSignatureSaving(true);
+                      const sb = createSupabaseClient();
+                      const { error } = await sb
+                        .from('photographers')
+                        .update({ signature_image: signatureImage })
+                        .eq('id', photographer.id);
+                      setSignatureSaving(false);
+                      if (!error) {
+                        setSignatureSaved(true);
+                        setTimeout(() => setSignatureSaved(false), 2000);
+                      }
+                    }}
+                    disabled={signatureSaving}
+                  >
+                    {signatureSaved ? <><Check className="w-3.5 h-3.5" />Saved</> : signatureSaving ? 'Saving...' : <><Save className="w-3.5 h-3.5" />Save Signature</>}
+                  </Button>
+                </div>
+              </Section>
             </div>
           )}
 

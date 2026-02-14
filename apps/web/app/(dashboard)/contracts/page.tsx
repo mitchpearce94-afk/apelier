@@ -313,18 +313,35 @@ export default function ContractsPage() {
 
             {/* Signature display (if signed) */}
             {selectedContract.status === 'signed' && selectedContract.signature_data && (
-              <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Signature</p>
-                <div className="rounded-lg border border-white/[0.06] bg-white p-3">
-                  <img
-                    src={selectedContract.signature_data.signature_image}
-                    alt="Client signature"
-                    className="max-h-24 mx-auto"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-600">
-                  Signed from IP {selectedContract.signature_data.ip_address} on {formatDate(selectedContract.signed_at!, 'long')}
-                </p>
+              <div className="space-y-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Signatures</p>
+                {selectedContract.signature_data.photographer_signature && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-slate-500">Photographer</p>
+                    <div className="rounded-lg border border-white/[0.06] bg-white p-3">
+                      <img
+                        src={selectedContract.signature_data.photographer_signature}
+                        alt="Photographer signature"
+                        className="max-h-16 mx-auto"
+                      />
+                    </div>
+                  </div>
+                )}
+                {selectedContract.signature_data.signature_image && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-slate-500">Client</p>
+                    <div className="rounded-lg border border-white/[0.06] bg-white p-3">
+                      <img
+                        src={selectedContract.signature_data.signature_image}
+                        alt="Client signature"
+                        className="max-h-16 mx-auto"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-600">
+                      Signed from IP {selectedContract.signature_data.ip_address} on {formatDate(selectedContract.signed_at!, 'long')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
