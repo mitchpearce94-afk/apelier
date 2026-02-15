@@ -38,6 +38,61 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, updated: data });
     }
 
+    if (action === 'send_to_gallery') {
+      // All-in-one: update photos, gallery, job, and delete processing job
+      const { processing_job_id, gallery_id, auto_deliver } = body;
+      
+      if (!processing_job_id || !gallery_id) {
+        return NextResponse.json({ error: 'Missing processing_job_id or gallery_id' }, { status: 400 });
+      }
+
+      const results: Record<string, any> = {};
+
+      // 1. Update all approved/edited photos to 'delivered'
+      const { data: updatedPhotos, error: photoErr } = await supabaseAdmin
+        .from('photos')
+        .update({ status: 'delivered' })
+        .eq('gallery_id', gallery_id)
+        .in('status', ['approved', 'edited'])
+        .select('id');
+      results.photos = { updated: updatedPhotos?.length || 0, error: photoErr?.message };
+
+      // 2. Update gallery status
+      const newGalleryStatus = auto_deliver ? 'delivered' : 'ready';
+      const { error: galErr } = await supabaseAdmin
+        .from('galleries')
+        .update({ status: newGalleryStatus })
+        .eq('id', gallery_id);
+      results.gallery = { status: newGalleryStatus, error: galErr?.message };
+
+      // 3. Update job status via gallery's job_id
+      const { data: galData } = await supabaseAdmin
+        .from('galleries')
+        .select('job_id')
+        .eq('id', gallery_id)
+        .single();
+      
+      if (galData?.job_id) {
+        const newJobStatus = auto_deliver ? 'delivered' : 'completed';
+        const { error: jobErr } = await supabaseAdmin
+          .from('jobs')
+          .update({ status: newJobStatus })
+          .eq('id', galData.job_id);
+        results.job = { id: galData.job_id, status: newJobStatus, error: jobErr?.message };
+      }
+
+      // 4. Delete the processing job
+      const { error: pjErr } = await supabaseAdmin
+        .from('processing_jobs')
+        .delete()
+        .eq('id', processing_job_id);
+      results.processing_job = { deleted: !pjErr, error: pjErr?.message };
+
+      console.log('[send_to_gallery] results:', JSON.stringify(results));
+
+      return NextResponse.json({ success: true, results });
+    }
+
     if (action === 'delete') {
       if (!job_id) {
         return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });

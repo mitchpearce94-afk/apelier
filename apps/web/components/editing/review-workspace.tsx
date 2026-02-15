@@ -155,41 +155,28 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
     setSendingToGallery(true);
 
     if (!useMockData) {
-      const sb = createSupabaseClient();
-
-      // 1. Update all approved photos to 'delivered'
-      const approvedIds = photos.filter((p) => p.status === 'approved').map((p) => p.id);
-      if (approvedIds.length > 0) {
-        await sb.from('photos').update({ status: 'delivered' }).in('id', approvedIds);
-      }
-
-      // 2. Update gallery status
-      const newGalleryStatus = autoDeliver ? 'delivered' : 'ready';
-      await sb.from('galleries').update({ status: newGalleryStatus }).eq('id', processingJob.gallery_id);
-
-      // 3. Update job status via gallery's job_id
-      const { data: galleryData } = await sb.from('galleries').select('job_id').eq('id', processingJob.gallery_id).single();
-      if (galleryData?.job_id) {
-        const newJobStatus = autoDeliver ? 'delivered' : 'ready_for_review';
-        await sb.from('jobs').update({ status: newJobStatus }).eq('id', galleryData.job_id);
-      }
-
-      // 4. DELETE the processing job via server-side API (bypasses RLS)
+      // Single server-side API call handles ALL DB writes (bypasses RLS)
       try {
-        const pjRes = await fetch('/api/processing-jobs', {
+        const res = await fetch('/api/processing-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', job_id: processingJob.id }),
+          body: JSON.stringify({
+            action: 'send_to_gallery',
+            processing_job_id: processingJob.id,
+            gallery_id: processingJob.gallery_id,
+            auto_deliver: autoDeliver,
+          }),
         });
-        const pjResult = await pjRes.json();
-        console.log('[SendToGallery] delete processing job:', pjRes.status, pjResult);
+        const result = await res.json();
+        console.log('[SendToGallery]', res.status, result);
       } catch (err) {
-        console.error('[SendToGallery] delete failed:', err);
+        console.error('[SendToGallery] failed:', err);
       }
 
-      // 5. If autoDeliver, trigger gallery delivery email
+      // If autoDeliver, send delivery email
       if (autoDeliver) {
         try {
+          const sb = createSupabaseClient();
           const { sendGalleryDeliveryEmail } = await import('@/lib/email');
           const { getCurrentPhotographer } = await import('@/lib/queries');
           const { data: galleryFull } = await sb
@@ -219,9 +206,9 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
     }
 
     setSendingToGallery(false);
-    // Go straight back — the editing page will refresh and the job will be gone
     onBack();
   };
+
 
   const approvedCount = photos.filter((p) => p.status === 'approved').length;
 
