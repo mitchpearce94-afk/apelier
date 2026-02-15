@@ -648,7 +648,7 @@ export default function JobsPage() {
           <div className="space-y-6">
             {/* Actions */}
             <div className="flex items-center gap-2">
-              {selectedJob.status === 'edited' && (
+              {(selectedJob.status === 'edited' || selectedJob.status === 'ready_for_review' || selectedJob.status === 'editing') && selectedJob.status !== 'delivered' && (
                 <Button size="sm" onClick={async () => {
                   console.log('[DeliverJob] delivering job:', selectedJob.id);
                   try {
