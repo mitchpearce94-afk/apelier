@@ -22,11 +22,12 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
       {PHASES.map((phase, i) => {
         const isComplete = status === 'completed' || (currentIndex > -1 && i < currentIndex);
         const isCurrent = status === 'processing' && i === currentIndex;
+        const isPast = isComplete || isCurrent;
 
         return (
           <div key={phase.id} className="flex items-center gap-1">
             <div
-              className={`relative group flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold transition-all ${
+              className={`relative group flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold transition-all duration-500 ${
                 isComplete
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                   : isCurrent
@@ -39,7 +40,7 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
               ) : isCurrent ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <span>{i}</span>
+                <span>{i + 1}</span>
               )}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1a2e] border border-white/[0.08] rounded-md text-[10px] text-slate-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                 <span className="font-medium text-white">{phase.label}</span>
@@ -48,7 +49,7 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
               </div>
             </div>
             {i < PHASES.length - 1 && (
-              <div className={`w-3 h-px ${isComplete ? 'bg-emerald-500/40' : isCurrent ? 'bg-indigo-500/30' : 'bg-white/[0.06]'}`} />
+              <div className={`w-3 h-px transition-all duration-500 ${isPast ? 'bg-emerald-500/40' : 'bg-white/[0.06]'}`} />
             )}
           </div>
         );
@@ -61,7 +62,8 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
 // Processing Queue Card
 // ============================================
 export function ProcessingCard({ job, onReview }: { job: ProcessingJobWithGallery; onReview: () => void }) {
-  const progress = job.total_images > 0 ? Math.round((job.processed_images / job.total_images) * 100) : 0;
+  const progress = job.status === 'completed' ? 100
+    : job.total_images > 0 ? Math.round((job.processed_images / job.total_images) * 100) : 0;
   const clientName = job.gallery?.job?.client
     ? `${job.gallery.job.client.first_name} ${job.gallery.job.client.last_name || ''}`
     : 'Unknown Client';

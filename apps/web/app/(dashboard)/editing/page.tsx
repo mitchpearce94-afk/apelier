@@ -49,74 +49,51 @@ export default function EditingPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   // Poll for processing job status when on the queue tab
+  const pollingActiveRef = useRef(false);
+
   useEffect(() => {
     if (activeTab !== 'queue') {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
+        pollingActiveRef.current = false;
       }
       return;
     }
 
-    const activeJobs = processingJobs.filter(
-      (j) => j.status === 'processing' || j.status === 'queued'
-    );
+    if (pollingActiveRef.current) return; // Already polling
 
-    if (activeJobs.length > 0 && !pollingRef.current) {
-      pollingRef.current = setInterval(async () => {
-        // Poll status for each active job via the API bridge
-        for (const job of activeJobs) {
-          try {
-            const res = await fetch('/api/process', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'status', job_id: job.id }),
-            });
-            if (res.ok) {
-              const statusData = await res.json();
-              setProcessingJobs((prev) =>
-                prev.map((p) =>
-                  p.id === job.id
-                    ? {
-                        ...p,
-                        status: statusData.status,
-                        current_phase: statusData.current_phase,
-                        processed_images: statusData.processed_images ?? p.processed_images,
-                      }
-                    : p
-                )
-              );
-            }
-          } catch {
-            // AI engine not reachable — skip this poll
-          }
-        }
-
-        // Refresh full list if any job completed
+    pollingActiveRef.current = true;
+    pollingRef.current = setInterval(async () => {
+      try {
         const fresh = await getProcessingJobs();
         if (fresh.length > 0) {
           setProcessingJobs(fresh as ProcessingJobWithGallery[]);
           setUseMockData(false);
-        }
 
-        // Stop polling if no more active jobs
-        const stillActive = fresh.some(
-          (j: ProcessingJob) => j.status === 'processing' || j.status === 'queued'
-        );
-        if (!stillActive && pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
+          // Stop polling if no more active jobs
+          const stillActive = fresh.some(
+            (j: ProcessingJob) => j.status === 'processing' || j.status === 'queued'
+          );
+          if (!stillActive && pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+            pollingActiveRef.current = false;
+          }
         }
-      }, 4000); // Poll every 4 seconds
-    }
+      } catch {
+        // Skip this poll cycle
+      }
+    }, 3000);
 
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
+        pollingActiveRef.current = false;
       }
     };
-  }, [activeTab, processingJobs]);
+  }, [activeTab]);
 
   if (loading) {
     return (

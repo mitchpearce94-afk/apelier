@@ -5,8 +5,8 @@ export const PHASES = [
   { id: 'style', label: 'Style', description: 'Applying your trained editing style' },
   { id: 'retouch', label: 'Retouch', description: 'Face & skin retouching' },
   { id: 'cleanup', label: 'Cleanup', description: 'Background & distraction removal' },
-  { id: 'compose', label: 'Compose', description: 'Horizon, crop & composition' },
-  { id: 'finalize', label: 'QA & Output', description: 'Quality check & output generation' },
+  { id: 'composition', label: 'Compose', description: 'Horizon, crop & composition' },
+  { id: 'output', label: 'Output', description: 'Quality check & output generation' },
 ];
 
 export type ProcessingJobWithGallery = ProcessingJob & {
