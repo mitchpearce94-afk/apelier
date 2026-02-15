@@ -122,6 +122,22 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       setGallery({ ...gallery, ...delivered, status: 'delivered' });
       onUpdate?.({ ...gallery, ...delivered, status: 'delivered' });
 
+      // Update the job status to 'delivered' via server API (bypasses RLS)
+      const jobId = (gallery as any).job_id || (delivered as any).job_id;
+      if (jobId) {
+        try {
+          const jobRes = await fetch('/api/processing-jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'update_job_status', target_job_id: jobId, status: 'delivered' }),
+          });
+          const jobResult = await jobRes.json();
+          console.log('[DeliverGallery] job status update:', jobRes.status, jobResult);
+        } catch (err) {
+          console.error('[DeliverGallery] job status update failed:', err);
+        }
+      }
+
       // Send delivery email
       const clientEmail = (delivered as any)?.client?.email || (gallery as any)?.client?.email;
       if (clientEmail && clientName) {

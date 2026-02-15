@@ -12,7 +12,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
 import { getJobs, getClients, createJob, updateJob, deleteJob, getCurrentPhotographer, getPackages, createInvoice } from '@/lib/queries';
 import { sendInvoiceEmail, sendBookingConfirmationEmail } from '@/lib/email';
-import { Briefcase, Plus, Search, MapPin, Calendar as CalendarIcon, Pencil, Trash2, User, DollarSign, MessageSquare, X, Share2 } from 'lucide-react';
+import { Briefcase, Plus, Search, MapPin, Calendar as CalendarIcon, Pencil, Trash2, User, DollarSign, MessageSquare, X } from 'lucide-react';
 import type { Job, JobStatus, Client, Photographer } from '@/lib/types';
 
 interface PackageItem {
@@ -648,29 +648,6 @@ export default function JobsPage() {
           <div className="space-y-6">
             {/* Actions */}
             <div className="flex items-center gap-2">
-              {(selectedJob.status === 'edited' || selectedJob.status === 'ready_for_review' || selectedJob.status === 'editing') && selectedJob.status !== 'delivered' && (
-                <Button size="sm" onClick={async () => {
-                  console.log('[DeliverJob] delivering job:', selectedJob.id);
-                  try {
-                    const res = await fetch('/api/processing-jobs', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'update_job_status', target_job_id: selectedJob.id, status: 'delivered' }),
-                    });
-                    const result = await res.json();
-                    console.log('[DeliverJob] response:', res.status, JSON.stringify(result));
-                    if (result.success) {
-                      const updated = { ...selectedJob, status: 'delivered' as JobStatus };
-                      setJobs((prev) => prev.map((j) => j.id === selectedJob.id ? updated : j));
-                      setSelectedJob(null);
-                    }
-                  } catch (err) {
-                    console.error('[DeliverJob] error:', err);
-                  }
-                }}>
-                  <Share2 className="w-3 h-3" />Deliver to Client
-                </Button>
-              )}
               <Button size="sm" variant="secondary" onClick={openEdit}>
                 <Pencil className="w-3 h-3" />Edit
               </Button>
