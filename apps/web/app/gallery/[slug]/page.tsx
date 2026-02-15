@@ -98,7 +98,7 @@ function Lightbox({ photo, photos, onClose, onPrev, onNext, onToggleFav, canDown
             <button
               onClick={async () => {
                 try {
-                  const res = await fetch(`/api/gallery-photos?action=download&gallery_id=${photo.gallery_id}&photo_id=${photo.id}&resolution=web`);
+                  const res = await fetch(`/api/gallery-photos?action=download&gallery_id=${photo.gallery_id}&photo_id=${photo.id}&resolution=full`);
                   const data = await res.json();
                   if (data.url) {
                     const a = document.createElement('a');

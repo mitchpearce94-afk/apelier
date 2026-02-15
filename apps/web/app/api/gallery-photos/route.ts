@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (action === 'download') {
       // Generate a signed URL for a specific photo download
       const photoId = searchParams.get('photo_id');
-      const resolution = searchParams.get('resolution') || 'web'; // 'web' or 'full'
+      const resolution = searchParams.get('resolution') || 'full'; // 'full' or 'web'
 
       if (!photoId) {
         return NextResponse.json({ error: 'Missing photo_id' }, { status: 400 });

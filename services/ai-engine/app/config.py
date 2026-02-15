@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     max_concurrent_images: int = 4
     web_res_max_px: int = 2048
     thumb_max_px: int = 400
-    jpeg_quality: int = 88
+    jpeg_quality: int = 95
+    web_quality: int = 92
     thumb_quality: int = 80
 
     class Config:

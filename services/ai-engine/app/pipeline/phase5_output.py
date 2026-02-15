@@ -65,13 +65,13 @@ def generate_outputs(img_array: np.ndarray) -> dict:
     """
     settings = get_settings()
 
-    # Full resolution
+    # Full resolution (highest quality)
     full_res_bytes = encode_jpeg(img_array, settings.jpeg_quality)
     full_h, full_w = img_array.shape[:2]
 
     # Web resolution
     web_img = resize_image(img_array, settings.web_res_max_px)
-    web_bytes = encode_jpeg(web_img, settings.jpeg_quality)
+    web_bytes = encode_jpeg(web_img, settings.web_quality)
     web_h, web_w = web_img.shape[:2]
 
     # Thumbnail
