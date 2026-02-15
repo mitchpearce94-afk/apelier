@@ -3,13 +3,18 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(`Missing env vars: URL=${!!url}, SERVICE_KEY=${!!key}`);
+  }
+  return createClient(url, key);
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseAdmin = getAdminClient();
     const body = await request.json();
     const { action, job_id } = body;
 

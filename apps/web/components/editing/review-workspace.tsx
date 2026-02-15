@@ -174,12 +174,18 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
         await sb.from('jobs').update({ status: newJobStatus }).eq('id', galleryData.job_id);
       }
 
-      // 4. Mark processing job as delivered via server-side API (bypasses RLS)
-      await fetch('/api/processing-jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mark_delivered', job_id: processingJob.id }),
-      });
+      // 4. DELETE the processing job via server-side API (bypasses RLS)
+      try {
+        const pjRes = await fetch('/api/processing-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', job_id: processingJob.id }),
+        });
+        const pjResult = await pjRes.json();
+        console.log('[SendToGallery] delete processing job:', pjRes.status, pjResult);
+      } catch (err) {
+        console.error('[SendToGallery] delete failed:', err);
+      }
 
       // 5. If autoDeliver, trigger gallery delivery email
       if (autoDeliver) {
