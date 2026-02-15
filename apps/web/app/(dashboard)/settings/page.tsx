@@ -989,6 +989,7 @@ interface StyleFile {
   id: string;
   file: File;
   status: 'pending' | 'uploading' | 'complete' | 'error';
+  preview?: string;
 }
 
 function EditingStyleSection({ photographerId }: { photographerId?: string }) {
@@ -1077,6 +1078,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         status: 'pending' as const,
+        preview: URL.createObjectURL(file),
       }));
 
     setFiles((prev) => [...prev, ...mapped]);
@@ -1199,6 +1201,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         }
       }
 
+      files.forEach((f) => { if (f.preview) URL.revokeObjectURL(f.preview); });
       setFiles([]);
     } catch (err) {
       console.error('Upload error:', err);
@@ -1360,10 +1363,14 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
               )}
               <div className="grid grid-cols-8 sm:grid-cols-10 gap-1 max-h-72 overflow-y-scroll pr-1" onWheel={(e) => e.stopPropagation()}>
                 {files.map((f) => (
-                  <div key={f.id} className="relative aspect-square rounded bg-white/[0.04] flex items-center justify-center group">
-                    <Camera className={`w-3 h-3 ${
-                      f.status === 'complete' ? 'text-emerald-600' : f.status === 'error' ? 'text-red-600' : f.status === 'uploading' ? 'text-indigo-400' : 'text-slate-700'
-                    }`} />
+                  <div key={f.id} className="relative aspect-square rounded overflow-hidden bg-white/[0.04] group">
+                    {f.preview ? (
+                      <img src={f.preview} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Camera className="w-3 h-3 text-slate-700" />
+                      </div>
+                    )}
                     {f.status === 'complete' && (
                       <div className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 flex items-center justify-center">
                         <Check className="w-1.5 h-1.5 text-white" />
@@ -1371,13 +1378,18 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
                     )}
                     {f.status === 'uploading' && (
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded">
-                        <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />
+                        <Loader2 className="w-3 h-3 text-white animate-spin" />
+                      </div>
+                    )}
+                    {f.status === 'error' && (
+                      <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center rounded">
+                        <X className="w-3 h-3 text-red-300" />
                       </div>
                     )}
                     {f.status === 'pending' && !uploading && (
                       <button
                         onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
                       >
                         <X className="w-2 h-2 text-white" />
                       </button>
