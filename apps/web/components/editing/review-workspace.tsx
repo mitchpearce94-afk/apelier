@@ -32,11 +32,13 @@ function PhotoImage({ photo, size = 'thumb', className = '' }: {
     );
   }
 
+  const objectFit = className.includes('object-contain') ? '' : 'object-cover';
+  
   return (
     <img
       src={url}
       alt={photo.filename}
-      className={`w-full h-full object-cover ${className}`}
+      className={`w-full h-full ${objectFit} ${className}`}
       loading="lazy"
     />
   );
@@ -264,8 +266,8 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                 <div className="px-3 py-2 border-b border-white/[0.06]">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Original</span>
                 </div>
-                <div className="aspect-[3/2] overflow-hidden">
-                  <PhotoImage photo={selectedPhoto} size="original" className="object-contain" />
+                <div className="flex items-center justify-center bg-black/20 min-h-[200px] max-h-[500px]">
+                  <PhotoImage photo={selectedPhoto} size="original" className="object-contain max-h-[500px]" />
                 </div>
               </div>
               <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] overflow-hidden">
@@ -273,8 +275,8 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400">AI Edited</span>
                   <Sparkles className="w-3 h-3 text-indigo-400" />
                 </div>
-                <div className="aspect-[3/2] overflow-hidden">
-                  <PhotoImage photo={selectedPhoto} size="web" className="object-contain" />
+                <div className="flex items-center justify-center bg-black/20 min-h-[200px] max-h-[500px]">
+                  <PhotoImage photo={selectedPhoto} size="web" className="object-contain max-h-[500px]" />
                 </div>
               </div>
             </div>
