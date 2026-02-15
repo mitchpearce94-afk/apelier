@@ -186,6 +186,7 @@ export interface Job {
   location?: string;
   package_name?: string;
   package_amount?: number;
+  included_images?: number;
   status: JobStatus;
   notes?: string;
   booking_slot_id?: string;
