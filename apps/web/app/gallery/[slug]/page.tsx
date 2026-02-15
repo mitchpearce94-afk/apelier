@@ -220,7 +220,22 @@ export default function PublicGalleryPage() {
       if (gData.expires_at && new Date(gData.expires_at) < new Date()) { setError('This gallery has expired. Please contact your photographer if you need access.'); setLoading(false); return; }
       const g: GalleryData = { ...gData, client: Array.isArray(gData.client) ? gData.client[0] ?? null : gData.client };
       setGallery(g);
-      if (g.access_type !== 'password') setUnlocked(true);
+      if (g.access_type !== 'password') {
+        setUnlocked(true);
+      } else {
+        // Check if a password is actually set — if not, auto-unlock
+        try {
+          const pwRes = await fetch('/api/gallery-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'check', gallery_id: g.id }),
+          });
+          const pwData = await pwRes.json();
+          if (!pwData.has_password) setUnlocked(true);
+        } catch {
+          // If check fails, still show password gate
+        }
+      }
       const { data: brandData } = await sb.from('photographers').select('business_name, brand_settings').eq('id', g.photographer_id).single();
       if (brandData) setBrand(brandData);
       const { data: photoData } = await sb.from('photos').select('*').eq('gallery_id', g.id)

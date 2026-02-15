@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+
+export const dynamic = 'force-dynamic';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,71 +10,82 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify the user is authenticated
-    const sb = createServerSupabaseClient();
-    const { data: { user }, error: authError } = await sb.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { action, job_id } = body;
 
+    console.log('[processing-jobs API]', action, job_id || '');
+
     if (action === 'mark_delivered') {
-      // Mark a specific job as delivered
-      const { error } = await supabaseAdmin
+      if (!job_id) {
+        return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });
+      }
+      const { data, error } = await supabaseAdmin
         .from('processing_jobs')
-        .update({ status: 'delivered' })
-        .eq('id', job_id);
+        .update({ status: 'delivered', completed_at: new Date().toISOString() })
+        .eq('id', job_id)
+        .select('id, status');
+
+      console.log('[mark_delivered] result:', data, 'error:', error);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, updated: data });
     }
 
     if (action === 'delete') {
-      // Delete a specific job
-      const { error } = await supabaseAdmin
+      if (!job_id) {
+        return NextResponse.json({ error: 'Missing job_id' }, { status: 400 });
+      }
+      const { data, error } = await supabaseAdmin
         .from('processing_jobs')
         .delete()
-        .eq('id', job_id);
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      return NextResponse.json({ success: true });
-    }
-
-    if (action === 'clear_completed') {
-      // Delete all completed/delivered jobs for this user's photographer account
-      const { data: photographer } = await supabaseAdmin
-        .from('photographers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!photographer) {
-        return NextResponse.json({ error: 'No photographer profile' }, { status: 404 });
-      }
-
-      const { data: deleted, error } = await supabaseAdmin
-        .from('processing_jobs')
-        .delete()
-        .eq('photographer_id', photographer.id)
-        .in('status', ['completed', 'delivered'])
+        .eq('id', job_id)
         .select('id');
 
+      console.log('[delete] result:', data, 'error:', error);
+
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
-
-      return NextResponse.json({ success: true, deleted: deleted?.length || 0 });
+      return NextResponse.json({ success: true, deleted: data?.length || 0 });
     }
 
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    if (action === 'clear_all') {
+      // Delete all non-active processing jobs
+      const { data, error } = await supabaseAdmin
+        .from('processing_jobs')
+        .delete()
+        .in('status', ['completed', 'delivered', 'failed', 'error'])
+        .select('id');
+
+      console.log('[clear_all] deleted:', data?.length, 'error:', error);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, deleted: data?.length || 0 });
+    }
+
+    if (action === 'clear_force') {
+      // Delete ALL processing jobs regardless of status
+      const { data, error } = await supabaseAdmin
+        .from('processing_jobs')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000')
+        .select('id');
+
+      console.log('[clear_force] deleted:', data?.length, 'error:', error);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, deleted: data?.length || 0 });
+    }
+
+    return NextResponse.json({ error: `Invalid action: ${action}` }, { status: 400 });
   } catch (err) {
-    console.error('Processing jobs cleanup error:', err);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    console.error('[processing-jobs API] error:', err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

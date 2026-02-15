@@ -212,12 +212,15 @@ export default function EditingPage() {
                   variant="ghost"
                   size="sm"
                   onClick={async () => {
-                    await fetch('/api/processing-jobs', {
+                    const res = await fetch('/api/processing-jobs', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'clear_completed' }),
+                      body: JSON.stringify({ action: 'clear_force' }),
                     });
-                    loadData();
+                    const result = await res.json();
+                    console.log('Clear all result:', result);
+                    setProcessingJobs([]);
+                    await loadData();
                   }}
                   className="text-xs text-slate-500 hover:text-red-400"
                 >
@@ -230,11 +233,13 @@ export default function EditingPage() {
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await fetch('/api/processing-jobs', {
+                      const res = await fetch('/api/processing-jobs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ action: 'delete', job_id: job.id }),
                       });
+                      const result = await res.json();
+                      console.log('Delete result:', result);
                       setProcessingJobs((prev) => prev.filter((j) => j.id !== job.id));
                     }}
                     className="absolute top-3 right-3 p-1.5 rounded-md bg-white/[0.04] text-slate-600 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-10"

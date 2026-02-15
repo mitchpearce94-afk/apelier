@@ -837,7 +837,7 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
 
   // Use photographer's global gallery defaults
   const p = photographer as any;
-  const defaultAccessType = p.gallery_default_access_type || 'password';
+  const defaultAccessType = p.gallery_default_access_type || 'public';
   const defaultExpiryDays = p.gallery_default_expiry_days ?? 30;
   const defaultDownloadFullRes = p.gallery_default_download_full_res ?? true;
   const defaultDownloadWeb = p.gallery_default_download_web ?? true;

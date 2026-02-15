@@ -17,8 +17,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, gallery_id, password } = body;
 
-    if (!gallery_id || !password) {
-      return NextResponse.json({ error: 'Missing gallery_id or password' }, { status: 400 });
+    if (!gallery_id) {
+      return NextResponse.json({ error: 'Missing gallery_id' }, { status: 400 });
+    }
+
+    // Check if a password is set (no password required for this action)
+    if (action === 'check') {
+      const sb = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      const { data: gallery } = await sb
+        .from('galleries')
+        .select('password_hash')
+        .eq('id', gallery_id)
+        .single();
+      
+      return NextResponse.json({ has_password: !!(gallery?.password_hash) });
+    }
+
+    if (!password) {
+      return NextResponse.json({ error: 'Missing password' }, { status: 400 });
     }
 
     const hash = await hashPassword(password);
