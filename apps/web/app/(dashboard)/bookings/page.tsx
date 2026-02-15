@@ -14,7 +14,7 @@ import {
   getBookingSlots, createBookingSlots, deleteBookingSlots, getPackages, getCurrentPhotographer,
 } from '@/lib/queries';
 import {
-  CalendarCheck, Plus, Trash2, Copy, ExternalLink, Globe, Lock,
+  CalendarCheck, Plus, Trash2, Copy, ExternalLink, Globe, Lock, Pencil,
   Clock, MapPin, ChevronRight, Calendar as CalendarIcon, X, Loader2,
 } from 'lucide-react';
 import type { BookingEvent, BookingSlot, Package } from '@/lib/types';
@@ -49,6 +49,14 @@ export default function BookingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<BookingEvent | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Edit event
+  const [editingEvent, setEditingEvent] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '', description: '', location: '', package_id: '',
+    custom_price: '', slot_duration_minutes: '15', buffer_minutes: '0',
+  });
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -103,13 +111,41 @@ export default function BookingsPage() {
     }
   }
 
-  async function handleCloseEvent() {
+  function openEditEvent() {
     if (!selectedEvent) return;
-    const updated = await updateBookingEvent(selectedEvent.id, { status: 'closed', is_published: false } as any);
+    setEditForm({
+      title: selectedEvent.title || '',
+      description: selectedEvent.description || '',
+      location: selectedEvent.location || '',
+      package_id: selectedEvent.package_id || '',
+      custom_price: selectedEvent.custom_price ? String(selectedEvent.custom_price) : '',
+      slot_duration_minutes: String(selectedEvent.slot_duration_minutes || 15),
+      buffer_minutes: String(selectedEvent.buffer_minutes || 0),
+    });
+    setEditingEvent(true);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedEvent) return;
+    setEditSaving(true);
+
+    const updated = await updateBookingEvent(selectedEvent.id, {
+      title: editForm.title,
+      description: editForm.description || '',
+      location: editForm.location || '',
+      package_id: editForm.package_id || null,
+      custom_price: editForm.custom_price ? parseFloat(editForm.custom_price) : null,
+      slot_duration_minutes: parseInt(editForm.slot_duration_minutes) || 15,
+      buffer_minutes: parseInt(editForm.buffer_minutes) || 0,
+    } as any);
+
     if (updated) {
       setSelectedEvent(updated);
       setEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e));
+      setEditingEvent(false);
     }
+    setEditSaving(false);
   }
 
   function generateTimeSlots(startTime: string, endTime: string, durationMin: number, bufferMin: number) {
@@ -314,7 +350,7 @@ export default function BookingsPage() {
                 </>
               )}
               {selectedEvent.status !== 'closed' && (
-                <Button size="sm" variant="danger" onClick={handleCloseEvent}><X className="w-3 h-3" />Close Event</Button>
+                <Button size="sm" variant="secondary" onClick={openEditEvent}><Pencil className="w-3 h-3" />Edit Event</Button>
               )}
               <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(selectedEvent)} className="ml-auto text-slate-600 hover:text-red-400">
                 <Trash2 className="w-3 h-3" />
@@ -414,6 +450,37 @@ export default function BookingsPage() {
           </div>
         )}
       </SlideOver>
+
+      {/* Edit Event Modal */}
+      <Modal open={editingEvent} onClose={() => setEditingEvent(false)} title="Edit Booking Event">
+        <form onSubmit={handleSaveEdit} className="space-y-4">
+          <Input label="Event Title" value={editForm.title} required
+            onChange={(e: any) => setEditForm((f) => ({ ...f, title: e.target.value }))} />
+          <Textarea label="Description" value={editForm.description}
+            onChange={(e: any) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+          <Input label="Location" value={editForm.location}
+            onChange={(e: any) => setEditForm((f) => ({ ...f, location: e.target.value }))} />
+          <Select label="Package" value={editForm.package_id}
+            options={[{ value: '', label: 'No package (custom price)' }, ...packages.map((p) => ({ value: p.id, label: `${p.name} — ${formatCurrency(Number(p.price))}` }))]}
+            onChange={(e: any) => setEditForm((f) => ({ ...f, package_id: e.target.value }))} />
+          {!editForm.package_id && (
+            <Input label="Custom Price" type="number" step="0.01" value={editForm.custom_price}
+              onChange={(e: any) => setEditForm((f) => ({ ...f, custom_price: e.target.value }))} />
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Slot Duration (min)" type="number" value={editForm.slot_duration_minutes}
+              onChange={(e: any) => setEditForm((f) => ({ ...f, slot_duration_minutes: e.target.value }))} />
+            <Input label="Buffer Between (min)" type="number" value={editForm.buffer_minutes}
+              onChange={(e: any) => setEditForm((f) => ({ ...f, buffer_minutes: e.target.value }))} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setEditingEvent(false)}>Cancel</Button>
+            <Button type="submit" disabled={editSaving || !editForm.title}>
+              {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Generate Slots Modal */}
       <Modal open={showSlotModal} onClose={() => setShowSlotModal(false)} title="Generate Time Slots">

@@ -18,6 +18,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields: slot_id, name, email' }, { status: 400 });
     }
 
+    // Check service role key is configured
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('SUPABASE_SERVICE_ROLE_KEY is not set');
+      return NextResponse.json({ error: 'Server configuration error. Please contact the photographer.' }, { status: 500 });
+    }
+
     const sb = getServiceClient();
 
     // 1. Fetch the slot and verify it's still available
