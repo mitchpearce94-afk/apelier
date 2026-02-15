@@ -327,10 +327,22 @@ export default function JobsPage() {
           .update({ status: 'available', client_id: null, job_id: null, booked_name: null, booked_email: null, booked_phone: null, booked_at: null })
           .eq('id', job.booking_slot_id);
       } else if (newStatus === 'upcoming' && job.status === 'canceled') {
-        // Restoring — re-book the slot
+        // Restoring — re-book the slot with client details
+        const client = job.client;
+        const bookedName = client ? `${client.first_name || ''} ${client.last_name || ''}`.trim() : '';
+        const bookedEmail = client?.email || '';
+        const bookedPhone = client?.phone || '';
         await sb
           .from('booking_slots')
-          .update({ status: 'booked', job_id: jobId, client_id: job.client_id || null, booked_at: new Date().toISOString() })
+          .update({
+            status: 'booked',
+            job_id: jobId,
+            client_id: job.client_id || null,
+            booked_name: bookedName || null,
+            booked_email: bookedEmail || null,
+            booked_phone: bookedPhone || null,
+            booked_at: new Date().toISOString(),
+          })
           .eq('id', job.booking_slot_id);
       }
     }

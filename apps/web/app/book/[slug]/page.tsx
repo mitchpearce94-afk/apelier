@@ -89,12 +89,12 @@ export default function PublicBookingPage() {
         if (pkgData) setPackagePrice(Number(pkgData.price));
       }
 
-      // Fetch available slots
+      // Fetch all slots (available + booked, not canceled/blocked)
       const { data: slotsData } = await sb
         .from('booking_slots')
         .select('*')
         .eq('event_id', eventData.id)
-        .eq('status', 'available')
+        .in('status', ['available', 'booked'])
         .order('date', { ascending: true })
         .order('start_time', { ascending: true });
 
@@ -131,7 +131,7 @@ export default function PublicBookingPage() {
           .from('booking_slots')
           .select('*')
           .eq('event_id', event.id)
-          .eq('status', 'available')
+          .in('status', ['available', 'booked'])
           .order('date', { ascending: true })
           .order('start_time', { ascending: true });
         setSlots(freshSlots || []);
@@ -152,12 +152,14 @@ export default function PublicBookingPage() {
   const accentColor = event?.accent_color || photographer?.brand_settings?.primary_color || '#6366f1';
   const brandName = photographer?.business_name || photographer?.name || 'Studio';
 
-  // Group available slots by date
+  // Group slots by date
   const slotsByDate = slots.reduce((acc, slot) => {
     if (!acc[slot.date]) acc[slot.date] = [];
     acc[slot.date].push(slot);
     return acc;
   }, {} as Record<string, BookingSlot[]>);
+  const sortedDates = Object.keys(slotsByDate).sort();
+  const hasAvailableSlots = slots.some((s) => s.status === 'available');
   const sortedDates = Object.keys(slotsByDate).sort();
   const price = event?.custom_price ?? packagePrice;
 
@@ -220,7 +222,7 @@ export default function PublicBookingPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-8">
-        {sortedDates.length === 0 ? (
+        {!hasAvailableSlots ? (
           <div className="text-center py-12">
             <Calendar className="w-12 h-12 text-slate-700 mx-auto mb-3" />
             <h2 className="text-lg font-semibold text-white mb-1">All slots are booked</h2>
@@ -236,18 +238,26 @@ export default function PublicBookingPage() {
                   {new Date(date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                 </p>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                  {slotsByDate[date].map((slot) => (
-                    <button
-                      key={slot.id}
-                      onClick={() => setSelectedSlot(slot)}
-                      className="px-3 py-2.5 rounded-lg border border-white/[0.08] text-sm font-medium text-white hover:border-opacity-40 transition-all"
-                      style={{ '--tw-border-opacity': 0.08 } as any}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = accentColor; (e.currentTarget as HTMLElement).style.backgroundColor = accentColor + '10'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = ''; (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
-                    >
-                      {slot.start_time.slice(0, 5)}
-                    </button>
-                  ))}
+                  {slotsByDate[date].map((slot) => {
+                    const isBooked = slot.status === 'booked';
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => !isBooked && setSelectedSlot(slot)}
+                        disabled={isBooked}
+                        className={cn(
+                          'px-3 py-2.5 rounded-lg border text-sm font-medium transition-all',
+                          isBooked
+                            ? 'border-white/[0.04] text-slate-600 cursor-not-allowed line-through bg-white/[0.02]'
+                            : 'border-white/[0.08] text-white hover:border-opacity-40'
+                        )}
+                        onMouseEnter={(e) => { if (!isBooked) { (e.currentTarget as HTMLElement).style.borderColor = accentColor; (e.currentTarget as HTMLElement).style.backgroundColor = accentColor + '10'; } }}
+                        onMouseLeave={(e) => { if (!isBooked) { (e.currentTarget as HTMLElement).style.borderColor = ''; (e.currentTarget as HTMLElement).style.backgroundColor = ''; } }}
+                      >
+                        {slot.start_time.slice(0, 5)}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ))}
