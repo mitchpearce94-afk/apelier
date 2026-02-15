@@ -27,7 +27,7 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
         return (
           <div key={phase.id} className="flex items-center gap-1">
             <div
-              className={`relative group flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold transition-all duration-500 ${
+              className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-bold transition-all duration-500 ${
                 isComplete
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                   : isCurrent
@@ -42,11 +42,6 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
               ) : (
                 <span>{i + 1}</span>
               )}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1a2e] border border-white/[0.08] rounded-md text-[10px] text-slate-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                <span className="font-medium text-white">{phase.label}</span>
-                <br />
-                {phase.description}
-              </div>
             </div>
             {i < PHASES.length - 1 && (
               <div className={`w-3 h-px transition-all duration-500 ${isPast ? 'bg-emerald-500/40' : 'bg-white/[0.06]'}`} />

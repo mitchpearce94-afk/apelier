@@ -13,9 +13,8 @@ import {
 } from '@/components/editing/mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Eye,
-  Clock, Image as ImageIcon, Loader2, Trash2, X,
+  Clock, Image as ImageIcon, Loader2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 type TabId = 'upload' | 'queue' | 'review';
 
@@ -206,50 +205,9 @@ export default function EditingPage() {
           {processingJobs.filter((j) => j.status === 'completed').length === 0 ? (
             <EmptyState icon={Eye} title="Nothing to review" description="Completed processing jobs will appear here for you to review and approve." />
           ) : (
-            <>
-              <div className="flex items-center justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={async () => {
-                    const res = await fetch('/api/processing-jobs', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'clear_force' }),
-                    });
-                    const result = await res.json();
-                    console.log('Clear all result:', result);
-                    setProcessingJobs([]);
-                    await loadData();
-                  }}
-                  className="text-xs text-slate-500 hover:text-red-400"
-                >
-                  <Trash2 className="w-3 h-3" />Clear All
-                </Button>
-              </div>
-              {processingJobs.filter((j) => j.status === 'completed').map((job) => (
-                <div key={job.id} className="relative group">
-                  <ProcessingCard job={job} onReview={() => setReviewingJob(job)} />
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const res = await fetch('/api/processing-jobs', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'delete', job_id: job.id }),
-                      });
-                      const result = await res.json();
-                      console.log('Delete result:', result);
-                      setProcessingJobs((prev) => prev.filter((j) => j.id !== job.id));
-                    }}
-                    className="absolute top-3 right-3 p-1.5 rounded-md bg-white/[0.04] text-slate-600 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all z-10"
-                    title="Dismiss"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </>
+            processingJobs.filter((j) => j.status === 'completed').map((job) => (
+              <ProcessingCard key={job.id} job={job} onReview={() => setReviewingJob(job)} />
+            ))
           )}
         </div>
       )}
