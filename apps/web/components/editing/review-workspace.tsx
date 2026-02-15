@@ -157,6 +157,8 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
     if (!useMockData) {
       // Single server-side API call handles ALL DB writes (bypasses RLS)
       try {
+        const jobId = (processingJob as any).gallery?.job_id;
+        console.log('[SendToGallery] sending with job_id:', jobId, 'gallery_id:', processingJob.gallery_id);
         const res = await fetch('/api/processing-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -164,11 +166,12 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
             action: 'send_to_gallery',
             processing_job_id: processingJob.id,
             gallery_id: processingJob.gallery_id,
+            job_id: jobId,
             auto_deliver: autoDeliver,
           }),
         });
         const result = await res.json();
-        console.log('[SendToGallery]', res.status, result);
+        console.log('[SendToGallery] response:', res.status, JSON.stringify(result));
       } catch (err) {
         console.error('[SendToGallery] failed:', err);
       }

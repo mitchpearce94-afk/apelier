@@ -12,6 +12,7 @@ export const PHASES = [
 export type ProcessingJobWithGallery = ProcessingJob & {
   gallery?: {
     title: string;
+    job_id?: string;
     job?: {
       title: string;
       job_number: number;

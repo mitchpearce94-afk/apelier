@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'send_to_gallery') {
-      const { processing_job_id, gallery_id, auto_deliver } = body;
+      const { processing_job_id, gallery_id, job_id, auto_deliver } = body;
       
       if (!processing_job_id || !gallery_id) {
         return NextResponse.json({ error: 'Missing processing_job_id or gallery_id' }, { status: 400 });
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
       const results: Record<string, any> = {};
 
-      // 1. Update all approved/edited photos to 'delivered'
+      // 1. Update all photos in this gallery to 'delivered'
       const { data: updatedPhotos, error: photoErr } = await supabaseAdmin
         .from('photos')
         .update({ status: 'delivered' })
@@ -64,49 +64,31 @@ export async function POST(request: NextRequest) {
         .eq('id', gallery_id);
       results.gallery = { status: newGalleryStatus, error: galErr?.message };
 
-      // 3. Find and update the job
-      // First try: gallery.job_id
-      const { data: galData } = await supabaseAdmin
-        .from('galleries')
-        .select('job_id')
-        .eq('id', gallery_id)
-        .single();
+      // 3. Update job status - use job_id passed from frontend, or look it up
+      let resolvedJobId = job_id;
       
-      let jobId = galData?.job_id;
-      console.log('[send_to_gallery] gallery job_id:', jobId);
-
-      // Fallback: find job that references this gallery
-      if (!jobId) {
-        const { data: jobData } = await supabaseAdmin
-          .from('jobs')
-          .select('id')
-          .eq('gallery_id', gallery_id)
-          .limit(1)
-          .single();
-        jobId = jobData?.id;
-        console.log('[send_to_gallery] fallback job lookup:', jobId);
-      }
-
-      // Fallback 2: find job linked to this gallery via galleries table
-      if (!jobId) {
-        const { data: jobsWithGallery } = await supabaseAdmin
+      if (!resolvedJobId) {
+        // Fallback: look up from gallery
+        const { data: galData } = await supabaseAdmin
           .from('galleries')
-          .select('id, job_id')
+          .select('job_id')
           .eq('id', gallery_id)
           .single();
-        console.log('[send_to_gallery] gallery record:', jobsWithGallery);
+        resolvedJobId = galData?.job_id;
       }
 
-      if (jobId) {
+      console.log('[send_to_gallery] resolvedJobId:', resolvedJobId, 'passed job_id:', job_id);
+
+      if (resolvedJobId) {
         const newJobStatus = auto_deliver ? 'delivered' : 'edited';
         const { data: jobResult, error: jobErr } = await supabaseAdmin
           .from('jobs')
           .update({ status: newJobStatus })
-          .eq('id', jobId)
+          .eq('id', resolvedJobId)
           .select('id, status');
-        results.job = { id: jobId, status: newJobStatus, updated: jobResult, error: jobErr?.message };
+        results.job = { id: resolvedJobId, newStatus: newJobStatus, result: jobResult, error: jobErr?.message };
       } else {
-        results.job = { error: 'No job_id found for this gallery' };
+        results.job = { error: 'No job_id found — not passed and not on gallery' };
       }
 
       // 4. Delete the processing job
@@ -116,7 +98,7 @@ export async function POST(request: NextRequest) {
         .eq('id', processing_job_id);
       results.processing_job = { deleted: !pjErr, error: pjErr?.message };
 
-      console.log('[send_to_gallery] ALL results:', JSON.stringify(results));
+      console.log('[send_to_gallery] RESULTS:', JSON.stringify(results));
 
       return NextResponse.json({ success: true, results });
     }
