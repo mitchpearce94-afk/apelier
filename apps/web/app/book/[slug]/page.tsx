@@ -160,7 +160,6 @@ export default function PublicBookingPage() {
   }, {} as Record<string, BookingSlot[]>);
   const sortedDates = Object.keys(slotsByDate).sort();
   const hasAvailableSlots = slots.some((s) => s.status === 'available');
-  const sortedDates = Object.keys(slotsByDate).sort();
   const price = event?.custom_price ?? packagePrice;
 
   if (loading) {
