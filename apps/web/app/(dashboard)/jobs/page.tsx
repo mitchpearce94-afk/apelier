@@ -316,6 +316,25 @@ export default function JobsPage() {
   }
 
   async function handleStatusChange(jobId: string, newStatus: JobStatus) {
+    const job = jobs.find((j) => j.id === jobId);
+
+    if (job?.booking_slot_id) {
+      const sb = (await import('@/lib/supabase/client')).createClient();
+      if (newStatus === 'canceled') {
+        // Free the booking slot
+        await sb
+          .from('booking_slots')
+          .update({ status: 'available', client_id: null, job_id: null, booked_name: null, booked_email: null, booked_phone: null, booked_at: null })
+          .eq('id', job.booking_slot_id);
+      } else if (newStatus === 'upcoming' && job.status === 'canceled') {
+        // Restoring — re-book the slot
+        await sb
+          .from('booking_slots')
+          .update({ status: 'booked', job_id: jobId, client_id: job.client_id || null, booked_at: new Date().toISOString() })
+          .eq('id', job.booking_slot_id);
+      }
+    }
+
     const updated = await updateJob(jobId, { status: newStatus });
     if (updated) {
       setJobs((prev) => prev.map((j) => j.id === jobId ? updated : j));

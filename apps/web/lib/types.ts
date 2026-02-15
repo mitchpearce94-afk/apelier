@@ -188,6 +188,7 @@ export interface Job {
   package_amount?: number;
   status: JobStatus;
   notes?: string;
+  booking_slot_id?: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;

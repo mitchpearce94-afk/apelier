@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
           package_amount: packageAmount,
           included_images: includedImages,
           status: 'upcoming',
+          booking_slot_id: slot_id,
           notes: `Booked via online booking page. Client: ${name} (${email})`,
         })
         .select('id, job_number')
