@@ -765,12 +765,11 @@ Run new SQL in Supabase Dashboard → SQL Editor. Migration files stored in `sup
 
 ### Features Added (15 Feb 2026 — Style Training & Processing Polish Session)
 - **Style API bridge route (`/api/style/route.ts`):** Frontend-to-AI-engine bridge for style profile operations. Supports `create` (upload refs + trigger training), `status` (poll training progress), and `retrain` (re-train existing profile). Same pattern as `/api/process` bridge
-- **Style upload fixed — server-side uploads:** `style-upload.tsx` rewritten to upload reference images via `/api/upload` server-side route (same fix as photo uploads — bypasses browser Supabase auth cookie issue). Previously used browser client which had no auth session
-- **Style training triggers AI engine:** After uploading reference images, the `CreateStyleFlow` component POSTs to `/api/style` with `action: 'create'`, which forwards to the AI engine's `/api/style/create` endpoint. The AI engine creates the style_profiles DB record and kicks off training in a background thread
-- **Style Profiles tab on editing page:** New "Style Profiles" tab added to the Auto Editor page. Lists all profiles with status badges (pending/training/ready/error), reference image count, training date. Create new, delete, and re-train actions. Auto-polls every 5 seconds when any profile is in training status
+- **Settings → Editing Style fixed — server-side uploads:** `EditingStyleSection` in settings rewritten to upload reference images via `/api/upload` server-side route (same fix as photo uploads — bypasses browser Supabase auth cookie issue). Previously used browser client which had no auth session
+- **Settings → Editing Style triggers AI engine training:** After uploading reference images, the Settings page now POSTs to `/api/style` bridge which forwards to the AI engine's `/api/style/create` endpoint (new profiles) or `/api/style/{id}/retrain` (existing profiles). Previously just set `status: 'training'` in DB without triggering actual training
+- **Settings → Editing Style polls training status:** Auto-polls every 5 seconds via `/api/style` status endpoint when style is in training/pending state. Status automatically updates to "ready" when training completes
 - **Processing Queue live polling:** Added `setInterval` (4-second interval) to poll `/api/process/status/{job_id}` when on the queue tab. Shows real-time phase progression. Stops polling when no active jobs remain. Full job list refreshes on each poll cycle
 - **`createStyleProfile` accepts reference_image_keys:** Updated queries.ts function signature to accept `reference_image_keys` and `status` parameters instead of hardcoding empty array and 'pending'
-- **MIN_IMAGES lowered to 50:** Changed from 100 to 50 to match the master doc spec (50–200 reference images) — lower barrier than competitors
 
 ### Known Issues (to fix)
 - **Processing Queue doesn't poll:** ~~The Processing Queue tab fires the process request but doesn't poll `/api/process/status/{job_id}` for live progress.~~ ✅ FIXED — now polls every 4 seconds

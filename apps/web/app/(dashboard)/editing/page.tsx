@@ -7,17 +7,16 @@ import type { ProcessingJob } from '@/lib/types';
 import { ProcessingCard } from '@/components/editing/editing-cards';
 import { ReviewWorkspace } from '@/components/editing/review-workspace';
 import { PhotoUpload } from '@/components/editing/photo-upload';
-import { StyleProfiles } from '@/components/editing/style-profiles';
 import {
   generateMockProcessingJobs,
   type ProcessingJobWithGallery,
 } from '@/components/editing/mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Eye,
-  Clock, Image as ImageIcon, Loader2, Palette,
+  Clock, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 
-type TabId = 'upload' | 'queue' | 'review' | 'styles';
+type TabId = 'upload' | 'queue' | 'review';
 
 export default function EditingPage() {
   const [activeTab, setActiveTab] = useState<TabId>('upload');
@@ -143,7 +142,7 @@ export default function EditingPage() {
         </div>
       </div>
 
-      {useMockData && activeTab !== 'styles' && (
+      {useMockData && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
           <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Showing demo data — processing jobs will appear here once you upload photos to a job.</span>
@@ -156,7 +155,6 @@ export default function EditingPage() {
           { id: 'upload' as TabId, label: 'Upload Photos', count: undefined },
           { id: 'queue' as TabId, label: 'Processing Queue', count: queuedCount > 0 ? queuedCount : undefined },
           { id: 'review' as TabId, label: 'Ready for Review', count: completedCount > 0 ? completedCount : undefined },
-          { id: 'styles' as TabId, label: 'Style Profiles', count: undefined },
         ]).map((tab) => (
           <button
             key={tab.id}
@@ -236,9 +234,6 @@ export default function EditingPage() {
           )}
         </div>
       )}
-
-      {/* Style Profiles tab */}
-      {activeTab === 'styles' && <StyleProfiles />}
     </div>
   );
 }

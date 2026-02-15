@@ -8,7 +8,7 @@ import {
   Upload, X, Check, AlertCircle, Loader2, Camera, Sparkles,
 } from 'lucide-react';
 
-const MIN_IMAGES = 50;
+const MIN_IMAGES = 100;
 const RECOMMENDED_IMAGES = 200;
 const MAX_IMAGES = 300;
 
@@ -244,7 +244,7 @@ export function CreateStyleFlow({ open, onClose, onCreated }: CreateStyleFlowPro
                 <div>
                   <p className="text-xs font-medium text-slate-300">How it works</p>
                   <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Upload 50–300 of your best edited images and the AI will learn everything about your style — exposure, colour grading, 
+                    Upload 100–300 of your best edited images and the AI will learn everything about your style — exposure, colour grading, 
                     white balance, contrast, tone curves, skin tone handling, saturation, and how you keep everything consistent across 
                     different scenes and lighting conditions. The more variety you give it, the better it handles edge cases.
                   </p>

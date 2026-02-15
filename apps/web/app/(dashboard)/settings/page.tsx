@@ -858,31 +858,75 @@ interface StyleFile {
 function EditingStyleSection({ photographerId }: { photographerId?: string }) {
   const [files, setFiles] = useState<StyleFile[]>([]);
   const [existingCount, setExistingCount] = useState(0);
+  const [existingKeys, setExistingKeys] = useState<string[]>([]);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [styleStatus, setStyleStatus] = useState<'none' | 'pending' | 'training' | 'ready' | 'error'>('none');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [trainingDate, setTrainingDate] = useState<string | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'starting' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadStyle = useCallback(async () => {
+    try {
+      const profiles = await getStyleProfiles();
+      if (profiles.length > 0) {
+        const active = profiles[0];
+        setExistingCount(active.reference_image_keys?.length || 0);
+        setExistingKeys(active.reference_image_keys || []);
+        setStyleStatus(active.status as any);
+        setProfileId(active.id);
+        setTrainingDate(active.training_completed_at || active.training_started_at || null);
+      }
+    } catch (err) {
+      console.error('Error loading style:', err);
+    }
+    setLoadingStyle(false);
+  }, []);
 
   useEffect(() => {
-    async function loadStyle() {
-      try {
-        const profiles = await getStyleProfiles();
-        if (profiles.length > 0) {
-          const active = profiles[0];
-          setExistingCount(active.reference_image_keys?.length || 0);
-          setStyleStatus(active.status as any);
-          setTrainingDate(active.training_completed_at || active.training_started_at || null);
-        }
-      } catch (err) {
-        console.error('Error loading style:', err);
-      }
-      setLoadingStyle(false);
-    }
     loadStyle();
-  }, []);
+  }, [loadStyle]);
+
+  // Poll for training status
+  useEffect(() => {
+    if ((styleStatus === 'training' || styleStatus === 'pending') && profileId) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          const res = await fetch('/api/style', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'status', profile_id: profileId }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'ready' || data.status === 'error') {
+              setStyleStatus(data.status);
+              setTrainingDate(data.training_completed_at || data.training_started_at || null);
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+              }
+              // Reload to get fresh data
+              loadStyle();
+            }
+          }
+        } catch {
+          // AI engine not reachable, keep polling
+        }
+      }, 5000);
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [styleStatus, profileId, loadStyle]);
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const remaining = STYLE_MAX_IMAGES - files.length - existingCount;
@@ -919,6 +963,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
 
     setUploading(true);
     setUploadProgress(0);
+    setUploadPhase('uploading');
 
     try {
       const photographer = await getCurrentPhotographer();
@@ -926,21 +971,31 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
 
       const imageKeys: string[] = [];
 
+      // Upload each file via server-side API route (bypasses browser auth cookie issue)
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'uploading' } : p));
 
         try {
           const safeName = f.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const storageKey = `${photographer.id}/style/${Date.now()}_${safeName}`;
+          const storageKey = `${photographer.id}/styles/my_style/${Date.now()}_${safeName}`;
 
-          const sb = createSupabaseClient();
-          const { data, error } = await sb.storage
-            .from('photos')
-            .upload(storageKey, f.file, { cacheControl: '3600', upsert: false });
+          const formData = new FormData();
+          formData.append('file', f.file);
+          formData.append('storageKey', storageKey);
 
-          if (error) throw error;
-          imageKeys.push(data.path);
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const result = await res.json();
+
+          if (!res.ok || result.error) {
+            throw new Error(result.error || 'Upload failed');
+          }
+
+          imageKeys.push(result.storageKey);
           setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'complete' } : p));
         } catch {
           setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'error' } : p));
@@ -949,40 +1004,68 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         setUploadProgress(Math.round(((i + 1) / files.length) * 100));
       }
 
-      // Create or update style profile
-      const profiles = await getStyleProfiles();
-      const sb = createSupabaseClient();
+      // Combine with existing keys
+      const allKeys = [...existingKeys, ...imageKeys];
 
-      if (profiles.length > 0) {
-        const existing = profiles[0];
-        const allKeys = [...(existing.reference_image_keys || []), ...imageKeys];
+      if (allKeys.length < 10) {
+        setUploading(false);
+        setUploadPhase(null);
+        return;
+      }
+
+      // Trigger training via AI engine
+      setUploadPhase('starting');
+
+      if (profileId) {
+        // Re-train existing profile — update keys in DB first, then retrain
+        const sb = createSupabaseClient();
         await sb.from('style_profiles').update({
           reference_image_keys: allKeys,
-          status: 'training',
-          training_started_at: new Date().toISOString(),
-        }).eq('id', existing.id);
-        setExistingCount(allKeys.length);
+        }).eq('id', profileId);
+
+        const res = await fetch('/api/style', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'retrain', profile_id: profileId }),
+        });
+
+        if (res.ok) {
+          setStyleStatus('training');
+          setExistingCount(allKeys.length);
+          setExistingKeys(allKeys);
+          setTrainingDate(new Date().toISOString());
+        }
       } else {
-        await createStyleProfile({ name: 'My Style', description: '' });
-        const newProfiles = await getStyleProfiles();
-        if (newProfiles.length > 0) {
-          await sb.from('style_profiles').update({
-            reference_image_keys: imageKeys,
-            status: 'training',
-            training_started_at: new Date().toISOString(),
-          }).eq('id', newProfiles[0].id);
-          setExistingCount(imageKeys.length);
+        // Create new profile and train via AI engine
+        const res = await fetch('/api/style', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create',
+            photographer_id: photographer.id,
+            name: 'My Style',
+            description: 'Default editing style',
+            reference_image_keys: allKeys,
+          }),
+        });
+
+        const result = await res.json();
+        if (res.ok && result.id) {
+          setProfileId(result.id);
+          setStyleStatus('training');
+          setExistingCount(allKeys.length);
+          setExistingKeys(allKeys);
+          setTrainingDate(new Date().toISOString());
         }
       }
 
-      setStyleStatus('training');
-      setTrainingDate(new Date().toISOString());
       setFiles([]);
     } catch (err) {
       console.error('Upload error:', err);
     }
 
     setUploading(false);
+    setUploadPhase(null);
   };
 
   const totalImages = files.length + existingCount;
@@ -1174,7 +1257,9 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
           <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-              <span className="text-xs font-medium text-indigo-300">Uploading... {uploadProgress}%</span>
+              <span className="text-xs font-medium text-indigo-300">
+                {uploadPhase === 'starting' ? 'Starting AI training...' : `Uploading... ${uploadProgress}%`}
+              </span>
             </div>
             <div className="h-1.5 bg-indigo-500/10 rounded-full overflow-hidden">
               <div className="h-full bg-indigo-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
