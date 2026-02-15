@@ -12,7 +12,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
 import { getJobs, getClients, createJob, updateJob, deleteJob, getCurrentPhotographer, getPackages, createInvoice } from '@/lib/queries';
 import { sendInvoiceEmail, sendBookingConfirmationEmail } from '@/lib/email';
-import { Briefcase, Plus, Search, MapPin, Calendar as CalendarIcon, Pencil, Trash2, User, DollarSign, MessageSquare, X } from 'lucide-react';
+import { Briefcase, Plus, Search, MapPin, Calendar as CalendarIcon, Pencil, Trash2, User, DollarSign, MessageSquare, X, Share2 } from 'lucide-react';
 import type { Job, JobStatus, Client, Photographer } from '@/lib/types';
 
 interface PackageItem {
@@ -53,6 +53,7 @@ const statusOptions = [
 
 const statusTabs: { label: string; value: string }[] = [
   { label: 'Open', value: 'open' },
+  { label: 'Edited', value: 'edited' },
   { label: 'Delivered', value: 'delivered' },
   { label: 'Completed', value: 'completed' },
   { label: 'All', value: 'all' },
@@ -425,7 +426,7 @@ export default function JobsPage() {
   const filteredJobs = jobs
     .filter((j) => {
       if (filter === 'all') return true;
-      if (filter === 'open') return !closedStatuses.includes(j.status);
+      if (filter === 'open') return !closedStatuses.includes(j.status) && j.status !== 'edited';
       return j.status === filter;
     })
     .filter((j) => {
@@ -475,7 +476,7 @@ export default function JobsPage() {
           <div className="flex items-center gap-1 border-b border-white/[0.06] -mb-[1px]">
             {statusTabs.map((tab) => {
               const count = tab.value === 'all' ? jobs.length
-                : tab.value === 'open' ? jobs.filter((j) => !['delivered', 'completed', 'canceled'].includes(j.status)).length
+                : tab.value === 'open' ? jobs.filter((j) => !['delivered', 'completed', 'canceled', 'edited'].includes(j.status)).length
                 : jobs.filter((j) => j.status === tab.value).length;
               return (
                 <button
@@ -649,6 +650,24 @@ export default function JobsPage() {
           <div className="space-y-6">
             {/* Actions */}
             <div className="flex items-center gap-2">
+              {selectedJob.status === 'edited' && (
+                <Button size="sm" onClick={async () => {
+                  const res = await fetch('/api/processing-jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'update_job_status', target_job_id: selectedJob.id, status: 'delivered' }),
+                  });
+                  const result = await res.json();
+                  console.log('[DeliverJob]', res.status, result);
+                  if (result.success) {
+                    const updated = { ...selectedJob, status: 'delivered' as JobStatus };
+                    setJobs((prev) => prev.map((j) => j.id === selectedJob.id ? updated : j));
+                    setSelectedJob(updated);
+                  }
+                }}>
+                  <Share2 className="w-3 h-3" />Deliver to Client
+                </Button>
+              )}
               <Button size="sm" variant="secondary" onClick={openEdit}>
                 <Pencil className="w-3 h-3" />Edit
               </Button>

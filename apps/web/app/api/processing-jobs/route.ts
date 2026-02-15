@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (galData?.job_id) {
-        const newJobStatus = auto_deliver ? 'delivered' : 'completed';
+        const newJobStatus = auto_deliver ? 'delivered' : 'edited';
         const { error: jobErr } = await supabaseAdmin
           .from('jobs')
           .update({ status: newJobStatus })
@@ -91,6 +91,27 @@ export async function POST(request: NextRequest) {
       console.log('[send_to_gallery] results:', JSON.stringify(results));
 
       return NextResponse.json({ success: true, results });
+    }
+
+    if (action === 'update_job_status') {
+      // Update a job's status using service role (bypasses RLS)
+      const { target_job_id, status } = body;
+      if (!target_job_id || !status) {
+        return NextResponse.json({ error: 'Missing target_job_id or status' }, { status: 400 });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('jobs')
+        .update({ status })
+        .eq('id', target_job_id)
+        .select('id, status');
+
+      console.log('[update_job_status]', target_job_id, status, 'result:', data, 'error:', error);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, updated: data });
     }
 
     if (action === 'delete') {
