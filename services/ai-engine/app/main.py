@@ -17,10 +17,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://*.vercel.app",
-    ],
+    allow_origins=["*"],  # Railway handles auth via service-to-service — frontend bridge routes are the gatekeepers
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
