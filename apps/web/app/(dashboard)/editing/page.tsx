@@ -8,11 +8,10 @@ import { ProcessingCard } from '@/components/editing/editing-cards';
 import { ReviewWorkspace } from '@/components/editing/review-workspace';
 import { PhotoUpload } from '@/components/editing/photo-upload';
 import {
-  generateMockProcessingJobs,
   type ProcessingJobWithGallery,
 } from '@/components/editing/mock-data';
 import {
-  Wand2, CheckCircle2, Sparkles, Eye,
+  Wand2, CheckCircle2, Eye,
   Clock, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 
@@ -23,25 +22,16 @@ export default function EditingPage() {
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingJob, setReviewingJob] = useState<ProcessingJobWithGallery | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const pjData = await getProcessingJobs();
-
-      if (pjData.length === 0) {
-        setUseMockData(true);
-        setProcessingJobs(generateMockProcessingJobs());
-      } else {
-        setUseMockData(false);
-        setProcessingJobs(pjData as ProcessingJobWithGallery[]);
-      }
+      setProcessingJobs(pjData as ProcessingJobWithGallery[]);
     } catch (err) {
       console.error('Error loading editing data:', err);
-      setUseMockData(true);
-      setProcessingJobs(generateMockProcessingJobs());
+      setProcessingJobs([]);
     }
     setLoading(false);
   }, []);
@@ -118,13 +108,6 @@ export default function EditingPage() {
           <p className="text-sm text-slate-500 mt-1">AI-powered photo processing pipeline</p>
         </div>
       </div>
-
-      {useMockData && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
-          <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Showing demo data — processing jobs will appear here once you upload photos to a job.</span>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-white/[0.06] -mb-px overflow-x-auto">
