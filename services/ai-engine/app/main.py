@@ -1,11 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import process, style, health
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 
 app = FastAPI(
-    title="Aperture Suite AI Engine",
-    description="AI photo processing service for Aperture Suite",
-    version="0.1.0",
+    title="Apelier AI Engine",
+    description="AI photo processing pipeline for Apelier — analysis, style application, composition, and output generation",
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -26,9 +33,9 @@ app.include_router(style.router, prefix="/api/style", tags=["style"])
 
 @app.on_event("startup")
 async def startup():
-    print("Aperture Suite AI Engine starting...")
+    print("Apelier AI Engine starting...")
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    print("Aperture Suite AI Engine shutting down...")
+    print("Apelier AI Engine shutting down...")
