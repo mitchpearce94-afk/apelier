@@ -841,6 +841,49 @@ export default function SettingsPage() {
 }
 
 // ============================================
+// Image Resize Utility (client-side)
+// ============================================
+
+function resizeImage(file: File, maxDimension: number, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+
+      // Only resize if larger than max dimension
+      if (Math.max(width, height) > maxDimension) {
+        if (width >= height) {
+          height = Math.round(height * (maxDimension / width));
+          width = maxDimension;
+        } else {
+          width = Math.round(width * (maxDimension / height));
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('No canvas context')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('Failed to create blob'));
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+    img.src = url;
+  });
+}
+
+// ============================================
 // Editing Style Section
 // ============================================
 
@@ -972,6 +1015,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
       const imageKeys: string[] = [];
 
       // Upload each file via server-side API route (bypasses browser auth cookie issue)
+      // Style training images are resized client-side to stay under Vercel's 4.5MB body limit
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'uploading' } : p));
@@ -980,8 +1024,11 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
           const safeName = f.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
           const storageKey = `${photographer.id}/styles/my_style/${Date.now()}_${safeName}`;
 
+          // Resize to 1600px max — style training only needs colour/tone info, not full resolution
+          const resizedBlob = await resizeImage(f.file, 1600, 0.85);
+
           const formData = new FormData();
-          formData.append('file', f.file);
+          formData.append('file', resizedBlob, safeName);
           formData.append('storageKey', storageKey);
 
           const res = await fetch('/api/upload', {
