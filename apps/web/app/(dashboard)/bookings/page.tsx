@@ -473,7 +473,7 @@ export default function BookingsPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteEvent}
         title="Delete Booking Event"
-        description={`Are you sure you want to delete "${deleteTarget?.title}"? All time slots will also be deleted. This cannot be undone.`}
+        message={`Are you sure you want to delete "${deleteTarget?.title}"? All time slots will also be deleted. This cannot be undone.`}
         confirmLabel="Delete Event"
         loading={deleting}
       />
