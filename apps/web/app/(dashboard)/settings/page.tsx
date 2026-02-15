@@ -1078,8 +1078,29 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
         status: 'pending' as const,
-        preview: URL.createObjectURL(file),
       }));
+
+    // Generate tiny thumbnails in background (80px — just for grid preview)
+    mapped.forEach((sf) => {
+      const img = new window.Image();
+      const url = URL.createObjectURL(sf.file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = 80;
+        canvas.height = 80;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const min = Math.min(img.width, img.height);
+        const sx = (img.width - min) / 2;
+        const sy = (img.height - min) / 2;
+        ctx.drawImage(img, sx, sy, min, min, 0, 0, 80, 80);
+        const thumb = canvas.toDataURL('image/jpeg', 0.5);
+        setFiles((prev) => prev.map((p) => p.id === sf.id ? { ...p, preview: thumb } : p));
+      };
+      img.onerror = () => URL.revokeObjectURL(url);
+      img.src = url;
+    });
 
     setFiles((prev) => [...prev, ...mapped]);
   }, [files.length, existingCount]);
@@ -1201,7 +1222,6 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         }
       }
 
-      files.forEach((f) => { if (f.preview) URL.revokeObjectURL(f.preview); });
       setFiles([]);
     } catch (err) {
       console.error('Upload error:', err);
