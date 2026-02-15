@@ -884,6 +884,99 @@ function resizeImage(file: File, maxDimension: number, quality: number): Promise
 }
 
 // ============================================
+// Trainee Comments (rolling AI comments during style training)
+// ============================================
+
+const TRAINEE_COMMENTS = [
+  "Oh yeah, I love that colour grading 👌",
+  "Omg that is so cute",
+  "Ooh, the way you handle shadows... *chef's kiss*",
+  "OK I see you with those warm tones",
+  "This skin tone work is immaculate",
+  "Wait, how did you get that glow?? Noted.",
+  "Golden hour AND consistent whites? You're a wizard",
+  "The contrast here is *perfect*",
+  "I'm obsessed with your highlight rolloff",
+  "Taking notes... lots of notes 📝",
+  "Your colour palette is so cohesive, I'm impressed",
+  "Oooh moody but not muddy — I see what you did there",
+  "The way you lifted those shadows without losing depth 🤌",
+  "This is giving main character energy",
+  "OK this white balance consistency is elite",
+  "I can already feel my neurons rewiring",
+  "Warm, clean, dreamy — got it, got it",
+  "You really said 'let there be light' and meant it",
+  "These tones are *butter*",
+  "Learning so much rn, don't mind me",
+  "Your editing style has range and I'm here for it",
+  "Saving this one as a personal favourite... for research",
+  "The vibes are immaculate, just saying",
+  "Rich blacks but airy highlights — love the balance",
+  "This deserves to be on a magazine cover tbh",
+  "OK teacher, I think I'm getting the hang of this",
+  "Yep, this is going in the mood board 📌",
+  "You make it look effortless but I know it's not",
+  "Studying your colour science like it's a final exam",
+  "Almost there... just soaking in a few more ✨",
+];
+
+function TraineeComments() {
+  const [currentComment, setCurrentComment] = useState('');
+  const [isVisible, setIsVisible] = useState(false);
+  const [usedIndices, setUsedIndices] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    function showNext() {
+      setIsVisible(false);
+
+      setTimeout(() => {
+        setUsedIndices((prev) => {
+          let available = Array.from({ length: TRAINEE_COMMENTS.length }, (_, i) => i).filter((i) => !prev.has(i));
+          if (available.length === 0) {
+            available = Array.from({ length: TRAINEE_COMMENTS.length }, (_, i) => i);
+            prev = new Set();
+          }
+          const idx = available[Math.floor(Math.random() * available.length)];
+          const next = new Set(prev);
+          next.add(idx);
+          setCurrentComment(TRAINEE_COMMENTS[idx]);
+          return next;
+        });
+        setIsVisible(true);
+      }, 400);
+    }
+
+    // Show first comment quickly
+    const initialTimeout = setTimeout(showNext, 800);
+
+    // Rotate every 3-5 seconds
+    const interval = setInterval(showNext, 3000 + Math.random() * 2000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, []);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-amber-500/10">
+      <div className="flex items-start gap-2">
+        <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Sparkles className="w-3 h-3 text-amber-400" />
+        </div>
+        <div
+          className={`px-3 py-1.5 rounded-xl rounded-tl-sm bg-amber-500/10 border border-amber-500/15 transition-all duration-300 ${
+            isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1'
+          }`}
+        >
+          <p className="text-xs text-amber-300/90 italic">{currentComment}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // Editing Style Section
 // ============================================
 
@@ -1162,6 +1255,18 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
                 </div>
               </div>
             </div>
+
+            {/* Training comments from the AI trainee */}
+            {(styleStatus === 'training' || styleStatus === 'pending') && (
+              <TraineeComments />
+            )}
+
+            {/* Success message when training completes */}
+            {styleStatus === 'ready' && (
+              <div className="mt-3 pt-3 border-t border-emerald-500/10">
+                <p className="text-xs text-emerald-400/80">Your editing style will now be automatically applied to all new uploads. Upload more images anytime to refine it further.</p>
+              </div>
+            )}
           </div>
         )}
 
