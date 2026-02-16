@@ -10,6 +10,8 @@ import {
   createGalleryForJob,
   updateJob,
   getStyleProfiles,
+  getGalleryForJob,
+  getGalleryPhotoCount,
 } from '@/lib/queries';
 import type { Job, StyleProfile } from '@/lib/types';
 import {
@@ -69,6 +71,8 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [selectedStyleId, setSelectedStyleId] = useState<string>('');
   const [autoProcess, setAutoProcess] = useState(true);
+  const [existingPhotoCount, setExistingPhotoCount] = useState(0);
+  const [packageLimit, setPackageLimit] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMapRef = useRef<Map<string, File>>(new Map());
 
@@ -312,7 +316,19 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                   return (
                     <button
                       key={job.id}
-                      onClick={() => { setSelectedJob(job); setShowJobPicker(false); }}
+                      onClick={async () => {
+                        setSelectedJob(job);
+                        setShowJobPicker(false);
+                        setPackageLimit(job.included_images || null);
+                        // Check if job already has a gallery with photos
+                        const existingGallery = await getGalleryForJob(job.id);
+                        if (existingGallery) {
+                          const count = await getGalleryPhotoCount(existingGallery.id);
+                          setExistingPhotoCount(count);
+                        } else {
+                          setExistingPhotoCount(0);
+                        }
+                      }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${
                         selectedJob?.id === job.id ? 'bg-indigo-500/10' : ''
                       }`}
@@ -379,6 +395,50 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
       {/* Step 3: Drop zone */}
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-2">{selectedJob ? '3' : '2'}. Add your photos</label>
+
+        {/* Image counter — shows package limit */}
+        {selectedJob && packageLimit && packageLimit > 0 && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-slate-400">
+                {existingPhotoCount + files.length} / {packageLimit} images
+                {existingPhotoCount > 0 && files.length > 0 && (
+                  <span className="text-slate-600"> ({existingPhotoCount} existing + {files.length} new)</span>
+                )}
+              </span>
+              {existingPhotoCount + files.length > packageLimit && (
+                <span className="text-red-400 font-medium">Over limit</span>
+              )}
+              {existingPhotoCount + files.length > 0 && existingPhotoCount + files.length < packageLimit && (
+                <span className="text-amber-400">{packageLimit - existingPhotoCount - files.length} remaining</span>
+              )}
+              {existingPhotoCount + files.length === packageLimit && (
+                <span className="text-emerald-400 font-medium">Complete</span>
+              )}
+            </div>
+            <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  existingPhotoCount + files.length > packageLimit ? 'bg-red-500'
+                    : existingPhotoCount + files.length === packageLimit ? 'bg-emerald-500'
+                    : 'bg-indigo-500'
+                }`}
+                style={{ width: `${Math.min(((existingPhotoCount + files.length) / packageLimit) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Over-limit warning */}
+        {packageLimit && packageLimit > 0 && existingPhotoCount + files.length > packageLimit && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2.5 mb-3 flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+            <p className="text-[11px] text-red-300">
+              You have {existingPhotoCount + files.length - packageLimit} more image{existingPhotoCount + files.length - packageLimit !== 1 ? 's' : ''} than the package includes ({packageLimit}).
+              Remove some files or the extras won&apos;t be delivered.
+            </p>
+          </div>
+        )}
         <div
           onDrop={handleDrop}
           onDragOver={handleDragOver}

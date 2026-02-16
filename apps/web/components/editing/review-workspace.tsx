@@ -1,16 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Photo } from '@/lib/types';
-import { getPhotosWithUrls, updatePhoto, type PhotoWithUrls } from '@/lib/queries';
+import { getPhotosWithUrls, updatePhoto, getCurrentPhotographer, uploadPhotoToStorage, createPhotoRecord, type PhotoWithUrls } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import type { ProcessingJobWithGallery } from './mock-data';
 import { generateMockPhotos } from './mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Camera, SlidersHorizontal,
   MessageSquare, Check, X, Star, Filter, ArrowLeft, Send,
-  AlertCircle, ImageIcon, Share2, Loader2,
+  AlertCircle, ImageIcon, Share2, Loader2, Upload,
 } from 'lucide-react';
 
 // ── Helper: render photo image (signed URL or placeholder) ────────
@@ -58,6 +58,60 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   const [sendingToGallery, setSendingToGallery] = useState(false);
   const [sentToGallery, setSentToGallery] = useState(false);
   const [autoDeliver, setAutoDeliver] = useState(false);
+  const [uploadingMore, setUploadingMore] = useState(false);
+  const [uploadMoreCount, setUploadMoreCount] = useState(0);
+  const [uploadMoreTotal, setUploadMoreTotal] = useState(0);
+  const uploadMoreRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadMore = useCallback(async (fileList: FileList) => {
+    if (!processingJob.gallery_id || fileList.length === 0) return;
+
+    setUploadingMore(true);
+    setUploadMoreCount(0);
+    setUploadMoreTotal(fileList.length);
+
+    try {
+      const photographer = await getCurrentPhotographer();
+      if (!photographer) { setUploadingMore(false); return; }
+
+      const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2'];
+
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!validExts.includes(ext)) continue;
+
+        try {
+          const result = await uploadPhotoToStorage(file, photographer.id, processingJob.gallery_id);
+          if (result) {
+            await createPhotoRecord({
+              gallery_id: processingJob.gallery_id,
+              original_key: result.storageKey,
+              filename: file.name,
+              file_size: file.size,
+              mime_type: file.type || 'application/octet-stream',
+              sort_order: photos.length + i,
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to upload ${file.name}:`, err);
+        }
+
+        setUploadMoreCount(i + 1);
+      }
+
+      // Reload photos
+      const data = await getPhotosWithUrls(processingJob.gallery_id);
+      if (data.length > 0) {
+        setPhotos(data);
+        setUseMockData(false);
+      }
+    } catch (err) {
+      console.error('Upload more error:', err);
+    }
+
+    setUploadingMore(false);
+  }, [processingJob.gallery_id, photos.length]);
 
   useEffect(() => {
     async function loadPhotos() {
@@ -450,6 +504,21 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
               <Button size="sm" onClick={handleBulkApprove}>
                 <Check className="w-3 h-3" /><span className="hidden sm:inline">Approve All Visible</span><span className="sm:hidden">Approve All</span>
               </Button>
+              <Button variant="secondary" size="sm" onClick={() => uploadMoreRef.current?.click()} disabled={uploadingMore}>
+                {uploadingMore ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" />{uploadMoreCount}/{uploadMoreTotal}</>
+                ) : (
+                  <><Upload className="w-3 h-3" /><span className="hidden sm:inline">Upload More</span><span className="sm:hidden">Upload</span></>
+                )}
+              </Button>
+              <input
+                ref={uploadMoreRef}
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.tiff,.tif,.cr2,.cr3,.nef,.arw,.dng,.raf,.orf,.rw2"
+                onChange={(e) => e.target.files && handleUploadMore(e.target.files)}
+                className="hidden"
+              />
             </>
           )}
         </div>

@@ -984,6 +984,38 @@ export async function getGallery(id: string): Promise<Gallery | null> {
   return data;
 }
 
+export async function getGalleryPhotoCount(galleryId: string): Promise<number> {
+  const sb = supabase();
+  const { count, error } = await sb
+    .from('photos')
+    .select('*', { count: 'exact', head: true })
+    .eq('gallery_id', galleryId)
+    .eq('is_culled', false);
+
+  if (error) {
+    console.error('Error counting gallery photos:', error);
+    return 0;
+  }
+  return count || 0;
+}
+
+export async function getGalleryForJob(jobId: string): Promise<Gallery | null> {
+  const sb = supabase();
+  const { data, error } = await sb
+    .from('galleries')
+    .select('*')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) {
+    // No gallery yet — that's fine
+    return null;
+  }
+  return data;
+}
+
 export async function getGalleryBySlug(slug: string): Promise<Gallery | null> {
   const sb = supabase();
   const { data, error } = await sb
