@@ -75,6 +75,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       if (!photographer) { setUploadingMore(false); return; }
 
       const validExts = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2'];
+      let uploadedCount = 0;
 
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
@@ -92,6 +93,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
               mime_type: file.type || 'application/octet-stream',
               sort_order: photos.length + i,
             });
+            uploadedCount++;
           }
         } catch (err) {
           console.error(`Failed to upload ${file.name}:`, err);
@@ -100,7 +102,24 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
         setUploadMoreCount(i + 1);
       }
 
-      // Reload photos
+      // Trigger AI processing on the gallery so new photos get edited
+      if (uploadedCount > 0) {
+        try {
+          await fetch('/api/process', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'process',
+              gallery_id: processingJob.gallery_id,
+              style_profile_id: processingJob.style_profile_id || null,
+            }),
+          });
+        } catch (err) {
+          console.error('Failed to trigger AI processing:', err);
+        }
+      }
+
+      // Reload photos to show the newly uploaded ones (they'll be in "uploaded" status until AI finishes)
       const data = await getPhotosWithUrls(processingJob.gallery_id);
       if (data.length > 0) {
         setPhotos(data);
@@ -111,7 +130,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
     }
 
     setUploadingMore(false);
-  }, [processingJob.gallery_id, photos.length]);
+  }, [processingJob.gallery_id, processingJob.style_profile_id, photos.length]);
 
   useEffect(() => {
     async function loadPhotos() {

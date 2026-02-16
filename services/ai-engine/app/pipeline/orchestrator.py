@@ -122,9 +122,15 @@ def run_pipeline(
             else:
                 log.info("No style profile available — processing without style")
 
-        # Fetch all photos
-        photos = get_gallery_photos(gallery_id)
+        # Fetch all photos — skip already-processed ones (have edited_key)
+        all_photos = get_gallery_photos(gallery_id)
+        photos = [p for p in all_photos if not p.get("edited_key")]
         if not photos:
+            # All photos already processed — nothing new to do
+            if all_photos:
+                log.info("All photos already processed — nothing new to process")
+                complete_job(processing_job_id, 0)
+                return
             fail_job(processing_job_id, "No photos found in gallery")
             return
 
