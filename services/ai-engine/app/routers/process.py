@@ -45,18 +45,50 @@ async def process_gallery(request: ProcessRequest, background_tasks: BackgroundT
             message="No photos found in gallery. Upload photos first.", total_images=0,
         )
 
+    # Count only unprocessed photos (no edited_key yet)
+    unprocessed = [p for p in photos if not p.get("edited_key")]
     total = len(photos)
 
+    if not unprocessed:
+        return ProcessResponse(
+            job_id="", status="completed",
+            message="All photos already processed", total_images=total,
+        )
+
     sb = get_supabase()
-    job_row = sb.insert("processing_jobs", {
-        "gallery_id": request.gallery_id,
-        "photographer_id": gallery["photographer_id"],
-        "style_profile_id": request.style_profile_id,
-        "total_images": total,
-        "processed_images": 0,
-        "status": "queued",
-        "current_phase": "queued",
-    })
+
+    # Check for existing processing job for this gallery — reuse it instead of creating a new one
+    existing_jobs = sb.select(
+        "processing_jobs", "*",
+        {"gallery_id": f"eq.{request.gallery_id}"},
+        order="created_at.desc",
+    )
+
+    job_row = None
+    if existing_jobs:
+        # Reuse the most recent job — reset it for re-processing
+        existing = existing_jobs[0]
+        sb.update("processing_jobs", {
+            "total_images": total,
+            "processed_images": total - len(unprocessed),
+            "status": "queued",
+            "current_phase": "queued",
+            "completed_at": None,
+            "error_log": None,
+        }, {"id": f"eq.{existing['id']}"})
+        job_row = existing
+        log.info(f"Reusing existing processing job {existing['id']} for gallery {request.gallery_id}")
+    else:
+        # Create new processing job
+        job_row = sb.insert("processing_jobs", {
+            "gallery_id": request.gallery_id,
+            "photographer_id": gallery["photographer_id"],
+            "style_profile_id": request.style_profile_id,
+            "total_images": total,
+            "processed_images": 0,
+            "status": "queued",
+            "current_phase": "queued",
+        })
 
     if not job_row:
         return ProcessResponse(
