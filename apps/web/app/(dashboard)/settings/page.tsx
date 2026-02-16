@@ -1004,7 +1004,11 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [trainingDate, setTrainingDate] = useState<string | null>(null);
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'starting' | null>(null);
+  const [presetFile, setPresetFile] = useState<File | null>(null);
+  const [presetStatus, setPresetStatus] = useState<'none' | 'attached' | 'uploaded'>('none');
+  const [hasExistingPreset, setHasExistingPreset] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const presetInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Warn user if they try to leave during upload
@@ -1028,6 +1032,11 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         setStyleStatus(active.status as any);
         setProfileId(active.id);
         setTrainingDate(active.training_completed_at || active.training_started_at || null);
+        // Check if profile has a preset
+        const settings = active.settings as Record<string, unknown> | null;
+        if (settings?.has_preset || settings?.preset_file_key) {
+          setHasExistingPreset(true);
+        }
       }
     } catch (err) {
       console.error('Error loading style:', err);
@@ -1140,9 +1149,36 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
       if (!photographer) { setUploading(false); return; }
 
       const imageKeys: string[] = [];
+      let presetFileKey: string | null = null;
 
-      // Upload each file via server-side API route (bypasses browser auth cookie issue)
-      // Style training images are resized client-side to stay under Vercel's 4.5MB body limit
+      // Upload preset file first (if attached)
+      if (presetFile) {
+        try {
+          const safeName = presetFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const presetStorageKey = `${photographer.id}/styles/presets/${Date.now()}_${safeName}`;
+
+          const formData = new FormData();
+          formData.append('file', presetFile);
+          formData.append('storageKey', presetStorageKey);
+
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const result = await res.json();
+          if (res.ok && !result.error) {
+            presetFileKey = result.storageKey;
+            setPresetStatus('uploaded');
+          } else {
+            console.error('Preset upload failed:', result.error);
+          }
+        } catch (err) {
+          console.error('Preset upload error:', err);
+        }
+      }
+
+      // Upload each reference image via server-side API route
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'uploading' } : p));
@@ -1193,9 +1229,14 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
       if (profileId) {
         // Re-train existing profile — update keys in DB first, then retrain
         const sb = createSupabaseClient();
-        await sb.from('style_profiles').update({
+        const updateData: Record<string, unknown> = {
           reference_image_keys: allKeys,
-        }).eq('id', profileId);
+        };
+        // If new preset uploaded, store the key in settings
+        if (presetFileKey) {
+          updateData.settings = { preset_file_key: presetFileKey };
+        }
+        await sb.from('style_profiles').update(updateData).eq('id', profileId);
 
         const res = await fetch('/api/style', {
           method: 'POST',
@@ -1208,6 +1249,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
           setExistingCount(allKeys.length);
           setExistingKeys(allKeys);
           setTrainingDate(new Date().toISOString());
+          if (presetFileKey) setHasExistingPreset(true);
         }
       } else {
         // Create new profile and train via AI engine
@@ -1218,8 +1260,9 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
             action: 'create',
             photographer_id: photographer.id,
             name: 'My Style',
-            description: 'Default editing style',
+            description: presetFileKey ? 'Preset + reference learning' : 'Default editing style',
             reference_image_keys: allKeys,
+            preset_file_key: presetFileKey || undefined,
           }),
         });
 
@@ -1230,10 +1273,12 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
           setExistingCount(allKeys.length);
           setExistingKeys(allKeys);
           setTrainingDate(new Date().toISOString());
+          if (presetFileKey) setHasExistingPreset(true);
         }
       }
 
       setFiles([]);
+      setPresetFile(null);
     } catch (err) {
       console.error('Upload error:', err);
     }
@@ -1370,6 +1415,71 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
             <span>{STYLE_MIN_IMAGES} min</span>
             <span>{STYLE_RECOMMENDED} ideal</span>
             <span>{STYLE_MAX_IMAGES}</span>
+          </div>
+        </div>
+
+        {/* Lightroom Preset (optional) */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0">
+              <Wand2 className="w-5 h-5 text-violet-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-200 mb-0.5">Lightroom Preset <span className="text-[10px] font-normal text-slate-500 ml-1">optional</span></p>
+              <p className="text-xs text-slate-500 leading-relaxed mb-3">
+                Upload your Lightroom preset (.xmp or .lrtemplate) and the AI uses it as a baseline — then learns your scene-specific adjustments on top. This is the fastest path to professional results.
+              </p>
+
+              {/* Preset file status */}
+              {hasExistingPreset && !presetFile && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/5 border border-violet-500/15">
+                  <Check className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                  <span className="text-xs text-violet-300">Preset already applied to your style profile</span>
+                </div>
+              )}
+
+              {presetFile ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08]">
+                  <Wand2 className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                  <span className="text-xs text-slate-300 truncate flex-1">{presetFile.name}</span>
+                  <span className="text-[10px] text-slate-600 flex-shrink-0">
+                    {presetFile.size < 1024 ? `${presetFile.size} B` : `${(presetFile.size / 1024).toFixed(1)} KB`}
+                  </span>
+                  {!uploading && (
+                    <button
+                      onClick={() => { setPresetFile(null); setPresetStatus('none'); }}
+                      className="p-0.5 text-slate-600 hover:text-red-400 transition-colors flex-shrink-0"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => presetInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/[0.1] hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-xs text-slate-400 hover:text-violet-300 disabled:opacity-50"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  {hasExistingPreset ? 'Replace preset' : 'Upload .xmp or .lrtemplate file'}
+                </button>
+              )}
+
+              <input
+                ref={presetInputRef}
+                type="file"
+                accept=".xmp,.lrtemplate"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setPresetFile(file);
+                    setPresetStatus('attached');
+                  }
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+            </div>
           </div>
         </div>
 
