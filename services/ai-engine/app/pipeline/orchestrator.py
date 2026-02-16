@@ -247,8 +247,9 @@ def run_pipeline(
                 if img is None:
                     continue
 
-                # Resize for processing — saves memory on Railway (512MB)
-                img = resize_for_processing(img)
+                # Process at full resolution for output quality
+                # Phase 0 already resizes separately for analysis
+                # If this OOMs, Railway needs more memory (1GB+)
 
                 if style_profile:
                     intensity = settings.get("style_intensity", 0.75)
