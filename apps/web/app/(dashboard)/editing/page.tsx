@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { EmptyState } from '@/components/ui/empty-state';
-import { getProcessingJobs } from '@/lib/queries';
+import { getProcessingJobs, deleteProcessingJob } from '@/lib/queries';
+import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import type { ProcessingJob } from '@/lib/types';
 import { ProcessingCard } from '@/components/editing/editing-cards';
 import { ReviewWorkspace } from '@/components/editing/review-workspace';
@@ -17,12 +18,17 @@ import {
 
 type TabId = 'upload' | 'queue' | 'review';
 
+// How long a job can be stuck with no progress before auto-failing (ms)
+const STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export default function EditingPage() {
   const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingJob, setReviewingJob] = useState<ProcessingJobWithGallery | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track last known progress per job for stale detection
+  const progressSnapshotRef = useRef<Map<string, { processed: number; timestamp: number }>>(new Map());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -38,6 +44,34 @@ export default function EditingPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Cancel / dismiss a processing job
+  const handleCancelJob = useCallback(async (jobId: string) => {
+    // Mark as failed in DB first
+    const sb = createSupabaseClient();
+    await sb.from('processing_jobs').update({
+      status: 'failed',
+      error_log: 'Cancelled by user',
+      completed_at: new Date().toISOString(),
+    }).eq('id', jobId);
+    // Remove from local state immediately
+    setProcessingJobs((prev) => prev.filter((j) => j.id !== jobId));
+  }, []);
+
+  // Auto-dismiss failed jobs after 10 seconds
+  useEffect(() => {
+    const failedJobs = processingJobs.filter((j) => j.status === 'failed');
+    if (failedJobs.length === 0) return;
+
+    const timers = failedJobs.map((job) => {
+      return setTimeout(async () => {
+        await deleteProcessingJob(job.id);
+        setProcessingJobs((prev) => prev.filter((j) => j.id !== job.id));
+      }, 10000);
+    });
+
+    return () => timers.forEach(clearTimeout);
+  }, [processingJobs]);
+
   // Poll for processing job status when on the queue tab
   const pollingActiveRef = useRef(false);
 
@@ -51,16 +85,41 @@ export default function EditingPage() {
       return;
     }
 
-    if (pollingActiveRef.current) return; // Already polling
+    if (pollingActiveRef.current) return;
 
     pollingActiveRef.current = true;
     pollingRef.current = setInterval(async () => {
       try {
         const fresh = await getProcessingJobs();
         if (fresh.length > 0) {
+          // Stale job detection — if a processing job hasn't progressed in 5 min, auto-fail it
+          const now = Date.now();
+          for (const job of fresh) {
+            if (job.status !== 'processing' && job.status !== 'queued') continue;
+
+            const snapshot = progressSnapshotRef.current.get(job.id);
+            if (snapshot) {
+              if (job.processed_images > snapshot.processed) {
+                // Progress made — update snapshot
+                progressSnapshotRef.current.set(job.id, { processed: job.processed_images, timestamp: now });
+              } else if (now - snapshot.timestamp > STALE_TIMEOUT_MS) {
+                // Stale — auto-fail
+                console.warn(`Processing job ${job.id} stale for 5+ min — auto-failing`);
+                const sb = createSupabaseClient();
+                await sb.from('processing_jobs').update({
+                  status: 'failed',
+                  error_log: 'Processing stalled — automatically cancelled',
+                  completed_at: new Date().toISOString(),
+                }).eq('id', job.id);
+              }
+            } else {
+              // First time seeing this job — record initial snapshot
+              progressSnapshotRef.current.set(job.id, { processed: job.processed_images, timestamp: now });
+            }
+          }
+
           setProcessingJobs(fresh as ProcessingJobWithGallery[]);
 
-          // Stop polling if no more active jobs
           const stillActive = fresh.some(
             (j: ProcessingJob) => j.status === 'processing' || j.status === 'queued'
           );
@@ -169,9 +228,12 @@ export default function EditingPage() {
           ) : (
             <div className="space-y-3">
               {processingJobs.filter((j) => j.status === 'processing' || j.status === 'queued').map((job) => (
-                <ProcessingCard key={job.id} job={job} onReview={() => setReviewingJob(job)} />
+                <ProcessingCard key={job.id} job={job} onReview={() => setReviewingJob(job)} onCancel={() => handleCancelJob(job.id)} />
               ))}
-              {processingJobs.filter((j) => j.status === 'processing' || j.status === 'queued').length === 0 && (
+              {processingJobs.filter((j) => j.status === 'failed').map((job) => (
+                <ProcessingCard key={job.id} job={job} onReview={() => {}} onCancel={() => handleCancelJob(job.id)} />
+              ))}
+              {processingJobs.filter((j) => j.status === 'processing' || j.status === 'queued' || j.status === 'failed').length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-sm text-slate-500">No active processing jobs. All caught up!</p>
                 </div>

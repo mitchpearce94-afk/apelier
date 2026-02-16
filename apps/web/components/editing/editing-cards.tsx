@@ -56,7 +56,7 @@ export function PhaseProgress({ currentPhase, status }: { currentPhase?: string;
 // ============================================
 // Processing Queue Card
 // ============================================
-export function ProcessingCard({ job, onReview }: { job: ProcessingJobWithGallery; onReview: () => void }) {
+export function ProcessingCard({ job, onReview, onCancel }: { job: ProcessingJobWithGallery; onReview: () => void; onCancel?: () => void }) {
   const progress = job.status === 'completed' ? 100
     : job.total_images > 0 ? Math.round((job.processed_images / job.total_images) * 100) : 0;
   const clientName = job.gallery?.job?.client
@@ -65,7 +65,9 @@ export function ProcessingCard({ job, onReview }: { job: ProcessingJobWithGaller
   const jobNumber = job.gallery?.job?.job_number ? `#${String(job.gallery.job.job_number).padStart(4, '0')}` : '';
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-5 hover:border-white/[0.1] transition-all">
+    <div className={`rounded-xl border bg-[#0c0c16] p-5 transition-all ${
+      job.status === 'failed' ? 'border-red-500/20 opacity-70' : 'border-white/[0.06] hover:border-white/[0.1]'
+    }`}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -80,13 +82,42 @@ export function ProcessingCard({ job, onReview }: { job: ProcessingJobWithGaller
             <Button size="sm" onClick={onReview}><Eye className="w-3 h-3" />Review</Button>
           )}
           {job.status === 'processing' && (
-            <Button variant="ghost" size="sm" disabled><Loader2 className="w-3 h-3 animate-spin" />Processing</Button>
+            <>
+              <Button variant="ghost" size="sm" disabled><Loader2 className="w-3 h-3 animate-spin" />Processing</Button>
+              {onCancel && (
+                <button onClick={onCancel} className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Cancel processing">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
           )}
           {job.status === 'queued' && (
-            <Button variant="secondary" size="sm" disabled><Clock className="w-3 h-3" />Queued</Button>
+            <>
+              <Button variant="secondary" size="sm" disabled><Clock className="w-3 h-3" />Queued</Button>
+              {onCancel && (
+                <button onClick={onCancel} className="p-1.5 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all" title="Cancel">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
+          )}
+          {job.status === 'failed' && onCancel && (
+            <button onClick={onCancel} className="px-2.5 py-1 text-xs rounded-md text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-all">
+              Dismiss
+            </button>
           )}
         </div>
       </div>
+
+      {/* Failed message */}
+      {job.status === 'failed' && (
+        <div className="rounded-lg bg-red-500/5 border border-red-500/15 p-2.5 mb-3 flex items-start gap-2">
+          <Trash2 className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+          <p className="text-[11px] text-red-300">
+            {(job as any).error_log || 'Processing failed — the AI engine may have run out of memory. Try again with fewer images.'}
+          </p>
+        </div>
+      )}
 
       <div className="mb-3">
         <div className="flex items-center justify-between text-xs mb-1.5">
