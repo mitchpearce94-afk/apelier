@@ -112,6 +112,39 @@ def get_style_profile(profile_id: str) -> Optional[dict]:
         return None
 
 
+def get_photographer_default_style(photographer_id: str) -> Optional[dict]:
+    """
+    Get the first 'ready' style profile for a photographer.
+    Used when no specific style_profile_id is passed to the pipeline —
+    ensures each photographer gets THEIR style, not a random one.
+    """
+    try:
+        sb = get_supabase()
+        profiles = sb.select(
+            "style_profiles", "*",
+            {
+                "photographer_id": f"eq.{photographer_id}",
+                "status": "eq.ready",
+            },
+            order="created_at.desc",
+        )
+        return profiles[0] if profiles else None
+    except Exception as e:
+        log.error(f"Failed to fetch default style for photographer {photographer_id}: {e}")
+        return None
+
+
+def validate_style_profile_ownership(profile_id: str, photographer_id: str) -> bool:
+    """Verify that a style profile belongs to the given photographer."""
+    try:
+        profile = get_style_profile(profile_id)
+        if not profile:
+            return False
+        return profile.get("photographer_id") == photographer_id
+    except Exception:
+        return False
+
+
 def update_style_profile(profile_id: str, **fields):
     try:
         sb = get_supabase()

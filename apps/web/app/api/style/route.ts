@@ -7,7 +7,10 @@ const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, profile_id, photographer_id, name, description, reference_image_keys, settings } = body;
+    const {
+      action, profile_id, photographer_id, name, description,
+      reference_image_keys, settings, preset_file_key,
+    } = body;
 
     if (action === 'create') {
       // Create and train a style profile via AI engine
@@ -27,6 +30,7 @@ export async function POST(request: NextRequest) {
           description: description || null,
           reference_image_keys,
           settings: settings || null,
+          preset_file_key: preset_file_key || null,
         }),
       });
 
@@ -35,7 +39,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'status') {
-      // Check training status
       if (!profile_id) {
         return NextResponse.json({ error: 'Missing profile_id' }, { status: 400 });
       }
@@ -46,7 +49,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'retrain') {
-      // Re-train an existing profile
       if (!profile_id) {
         return NextResponse.json({ error: 'Missing profile_id' }, { status: 400 });
       }

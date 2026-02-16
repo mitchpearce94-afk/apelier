@@ -1,243 +1,394 @@
 """
-Phase 1 — Style Application
+Phase 1 — Style Application (v2.0)
 
-Learns a photographer's editing style from 50-200+ reference images, then applies
-it to new photos. This is the core value proposition.
+Two-tier style application:
+  Tier A: Lightroom preset as baseline (XMP/lrtemplate → ~50-80 parameters)
+  Tier B: Reference image learning on top (luminance-preserving colour transfer)
 
-How it works:
-1. TRAINING: Analyse reference images to build a "style profile" — statistical
-   model of the photographer's colour grading preferences:
-   - Histogram distribution per channel (R, G, B, L)
-   - White balance offsets (warm/cool tendency)
-   - Contrast curve (shadows, midtones, highlights)
-   - Saturation/vibrance levels
-   - Tonal range preferences (crushed blacks, lifted shadows, etc.)
-   - Colour channel relationships (cross-channel tendencies)
-
-2. APPLICATION: Match new images to the learned style using:
-   - Histogram matching (primary method — fast and effective)
-   - White balance correction toward learned preference
-   - Contrast curve application
-   - Colour saturation adjustment
-
-This runs on CPU and produces results comparable to Lightroom preset application,
-which is what most photographers want as a starting point.
+Runs on CPU. No GPU required.
 """
 import io
-import json
 import logging
-import numpy as np
-import cv2
-from PIL import Image
 from typing import Optional
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from app.pipeline.preset_parser import parse_preset_file
 
 log = logging.getLogger(__name__)
 
 
-# ── Style Profile Training ───────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# PRESET APPLICATION ENGINE
+# ═══════════════════════════════════════════════════════════════
+
+def apply_preset_params(img: np.ndarray, preset: dict, intensity: float = 1.0) -> np.ndarray:
+    """Apply parsed Lightroom preset parameters to an image."""
+    if not preset:
+        return img
+    result = img.copy().astype(np.float32)
+
+    # --- Exposure (stops) ---
+    exp = preset.get('exposure', 0.0)
+    if abs(exp) > 0.01:
+        result *= 2.0 ** (exp * intensity)
+
+    # --- Temperature / Tint ---
+    temp, tint = preset.get('temperature', 0.0), preset.get('tint', 0.0)
+    if abs(temp) > 0.5 or abs(tint) > 0.5:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 2] += (temp / 100.0) * 10.0 * intensity
+        lab[:, :, 1] += (tint / 100.0) * 8.0 * intensity
+        result = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- Contrast (S-curve on luminance) ---
+    con = preset.get('contrast', 0.0)
+    if abs(con) > 0.5:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        amt = (con / 100.0) * intensity
+        lab[:, :, 0] = np.clip((L - 128.0) * (1.0 + amt * 0.5) + 128.0, 0, 255)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- Highlights / Shadows / Whites / Blacks ---
+    hi = preset.get('highlights', 0.0)
+    sh = preset.get('shadows', 0.0)
+    wh = preset.get('whites', 0.0)
+    bl = preset.get('blacks', 0.0)
+    if any(abs(v) > 0.5 for v in [hi, sh, wh, bl]):
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        if abs(hi) > 0.5:
+            L += np.clip((L - 192.0) / 63.0, 0, 1) * (hi / 100.0) * 40.0 * intensity
+        if abs(sh) > 0.5:
+            L += np.clip((63.0 - L) / 63.0, 0, 1) * (sh / 100.0) * 40.0 * intensity
+        if abs(wh) > 0.5:
+            L += np.clip((L - 230.0) / 25.0, 0, 1) * (wh / 100.0) * 30.0 * intensity
+        if abs(bl) > 0.5:
+            L += np.clip((25.0 - L) / 25.0, 0, 1) * (bl / 100.0) * 30.0 * intensity
+        lab[:, :, 0] = np.clip(L, 0, 255)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- HSL adjustments ---
+    hsl_keys = [k for k in preset if k.startswith('hsl_')]
+    if hsl_keys:
+        hsv = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+        H, S, V = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+        ranges = {
+            'red': (0, 15, 165, 180), 'orange': (15, 30), 'yellow': (30, 45),
+            'green': (45, 90), 'aqua': (90, 105), 'blue': (105, 135),
+            'purple': (135, 150), 'magenta': (150, 165),
+        }
+        for color, hr in ranges.items():
+            dh = preset.get(f'hsl_hue_{color}', 0.0)
+            ds = preset.get(f'hsl_sat_{color}', 0.0)
+            dl = preset.get(f'hsl_lum_{color}', 0.0)
+            if all(abs(v) < 0.5 for v in [dh, ds, dl]):
+                continue
+            if len(hr) == 4:
+                mask = ((H >= hr[0]) & (H < hr[1])) | ((H >= hr[2]) & (H <= hr[3]))
+            else:
+                mask = (H >= hr[0]) & (H < hr[1])
+            mf = cv2.GaussianBlur(mask.astype(np.float32), (5, 5), 0)
+            if abs(dh) > 0.5:
+                H += mf * (dh / 100.0) * 15.0 * intensity
+            if abs(ds) > 0.5:
+                S += mf * (ds / 100.0) * 50.0 * intensity
+            if abs(dl) > 0.5:
+                V += mf * (dl / 100.0) * 40.0 * intensity
+        hsv[:, :, 0] = H % 180
+        hsv[:, :, 1] = np.clip(S, 0, 255)
+        hsv[:, :, 2] = np.clip(V, 0, 255)
+        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+    # --- Split toning ---
+    hh_sat = preset.get('split_highlight_sat', 0.0)
+    sh_sat = preset.get('split_shadow_sat', 0.0)
+    if hh_sat > 0.5 or sh_sat > 0.5:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        bal = preset.get('split_balance', 0.0)
+        mid = 128.0 + bal * 0.5
+        if hh_sat > 0.5:
+            m = np.clip((L - mid) / (255.0 - mid + 1e-6), 0, 1)
+            rad = preset.get('split_highlight_hue', 0.0) / 360.0 * 2 * np.pi
+            lab[:, :, 1] += m * np.cos(rad) * hh_sat / 100.0 * 20.0 * intensity
+            lab[:, :, 2] += m * np.sin(rad) * hh_sat / 100.0 * 20.0 * intensity
+        if sh_sat > 0.5:
+            m = np.clip((mid - L) / (mid + 1e-6), 0, 1)
+            rad = preset.get('split_shadow_hue', 0.0) / 360.0 * 2 * np.pi
+            lab[:, :, 1] += m * np.cos(rad) * sh_sat / 100.0 * 20.0 * intensity
+            lab[:, :, 2] += m * np.sin(rad) * sh_sat / 100.0 * 20.0 * intensity
+        result = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- Clarity (local contrast on L channel) ---
+    clar = preset.get('clarity', 0.0)
+    if abs(clar) > 0.5:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        blurred = cv2.GaussianBlur(L, (0, 0), sigmaX=20)
+        lab[:, :, 0] = np.clip(L + (L - blurred) * (clar / 100.0) * 0.6 * intensity, 0, 255)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- Vibrance & Saturation ---
+    vib = preset.get('vibrance', 0.0)
+    sat = preset.get('saturation', 0.0)
+    if abs(vib) > 0.5 or abs(sat) > 0.5:
+        hsv = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+        Sc = hsv[:, :, 1]
+        if abs(sat) > 0.5:
+            Sc *= 1.0 + (sat / 100.0) * intensity
+        if abs(vib) > 0.5:
+            wt = 1.0 - Sc / 255.0
+            skin = ((hsv[:, :, 0] >= 5) & (hsv[:, :, 0] <= 25) & (Sc > 30)).astype(np.float32)
+            Sc += wt * (1.0 - skin * 0.7) * (vib / 100.0) * intensity * 80.0
+        hsv[:, :, 1] = np.clip(Sc, 0, 255)
+        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+    # --- Sharpening (luminance only) ---
+    sharp = preset.get('sharpness', 0.0)
+    if sharp > 1.0:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+        sig = max(0.5, preset.get('sharpen_radius', 1.0))
+        blurred = cv2.GaussianBlur(L, (0, 0), sig)
+        lab[:, :, 0] = np.clip(L + (L - blurred) * (sharp / 100.0) * intensity * 1.5, 0, 255)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    # --- Vignette ---
+    vig = preset.get('vignette_amount', 0.0)
+    if abs(vig) > 0.5:
+        ht, wd = result.shape[:2]
+        Y, X = np.ogrid[:ht, :wd]
+        cx, cy = wd / 2.0, ht / 2.0
+        md = np.sqrt(cx ** 2 + cy ** 2)
+        d = np.sqrt((X - cx) ** 2 + (Y - cy) ** 2) / md
+        mp = preset.get('vignette_midpoint', 50.0) / 100.0
+        ft = preset.get('vignette_feather', 50.0) / 100.0
+        vm = np.clip((d - mp) / (ft + 0.01), 0, 1) ** 1.5
+        amt = vig / 100.0 * intensity
+        factor = 1.0 + amt * vm if amt > 0 else 1.0 + amt * vm
+        result *= factor[:, :, np.newaxis]
+
+    # --- Grain ---
+    gr = preset.get('grain_amount', 0.0)
+    if gr > 0.5:
+        ht, wd = result.shape[:2]
+        sz = max(1, int(preset.get('grain_size', 25.0) / 25.0 * 4))
+        smh, smw = max(1, ht // sz), max(1, wd // sz)
+        noise = np.random.normal(0, (gr / 100.0) * 25.0 * intensity, (smh, smw)).astype(np.float32)
+        noise = cv2.resize(noise, (wd, ht), interpolation=cv2.INTER_LINEAR)
+        result += noise[:, :, np.newaxis]
+
+    # --- Tone curve (custom points) ---
+    tc = preset.get('tone_curve')
+    if tc and len(tc) >= 2:
+        pts = np.array(tc, dtype=np.float64)
+        lut = np.interp(np.arange(256), pts[:, 0], pts[:, 1]).astype(np.float32)
+        ident = np.arange(256, dtype=np.float32)
+        blut = np.clip(ident * (1 - intensity) + lut * intensity, 0, 255).astype(np.uint8)
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB)
+        lab[:, :, 0] = blut[lab[:, :, 0]]
+        result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR).astype(np.float32)
+
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
+# ═══════════════════════════════════════════════════════════════
+# REFERENCE IMAGE LEARNING (TIER B)
+# ═══════════════════════════════════════════════════════════════
 
 def compute_channel_stats(img_array: np.ndarray) -> dict:
     """Compute per-channel statistics for a single image."""
     if len(img_array.shape) == 2:
         img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
 
-    # Work in LAB colour space (perceptually uniform)
     lab = cv2.cvtColor(img_array, cv2.COLOR_BGR2LAB).astype(float)
     bgr = img_array.astype(float)
     hsv = cv2.cvtColor(img_array, cv2.COLOR_BGR2HSV).astype(float)
-
     stats = {}
 
-    # Per-channel histograms (256 bins)
     for i, name in enumerate(["b", "g", "r"]):
-        channel = bgr[:, :, i]
-        hist, _ = np.histogram(channel, bins=256, range=(0, 256))
+        ch = bgr[:, :, i]
+        hist, _ = np.histogram(ch, bins=256, range=(0, 256))
         hist = hist.astype(float) / hist.sum()
         stats[f"hist_{name}"] = hist.tolist()
-        stats[f"mean_{name}"] = float(np.mean(channel))
-        stats[f"std_{name}"] = float(np.std(channel))
+        stats[f"mean_{name}"] = float(np.mean(ch))
+        stats[f"std_{name}"] = float(np.std(ch))
 
-    # LAB stats
     for i, name in enumerate(["l", "a", "b_lab"]):
-        channel = lab[:, :, i]
-        hist, _ = np.histogram(channel, bins=256, range=(0, 256))
+        ch = lab[:, :, i]
+        hist, _ = np.histogram(ch, bins=256, range=(0, 256))
         hist = hist.astype(float) / hist.sum()
         stats[f"hist_{name}"] = hist.tolist()
-        stats[f"mean_{name}"] = float(np.mean(channel))
-        stats[f"std_{name}"] = float(np.std(channel))
+        stats[f"mean_{name}"] = float(np.mean(ch))
+        stats[f"std_{name}"] = float(np.std(ch))
 
-    # HSV stats
     stats["mean_saturation"] = float(np.mean(hsv[:, :, 1]))
     stats["mean_value"] = float(np.mean(hsv[:, :, 2]))
     stats["std_saturation"] = float(np.std(hsv[:, :, 1]))
 
-    # Contrast metrics
-    stats["shadow_mean"] = float(np.mean(lab[:, :, 0][lab[:, :, 0] < 85]))  # Bottom third
-    stats["midtone_mean"] = float(np.mean(lab[:, :, 0][(lab[:, :, 0] >= 85) & (lab[:, :, 0] <= 170)]))
-    stats["highlight_mean"] = float(np.mean(lab[:, :, 0][lab[:, :, 0] > 170])) if np.any(lab[:, :, 0] > 170) else 200.0
-
-    # White balance indicator (a/b channels in LAB)
-    stats["wb_a"] = float(np.mean(lab[:, :, 1]))  # Green-Red axis
-    stats["wb_b"] = float(np.mean(lab[:, :, 2]))  # Blue-Yellow axis
+    L = lab[:, :, 0]
+    stats["shadow_mean"] = float(np.mean(L[L < 85])) if np.any(L < 85) else 40.0
+    stats["midtone_mean"] = float(np.mean(L[(L >= 85) & (L <= 170)])) if np.any((L >= 85) & (L <= 170)) else 128.0
+    stats["highlight_mean"] = float(np.mean(L[L > 170])) if np.any(L > 170) else 200.0
+    stats["wb_a"] = float(np.mean(lab[:, :, 1]))
+    stats["wb_b"] = float(np.mean(lab[:, :, 2]))
 
     return stats
 
 
-def train_style_profile(reference_images: list[np.ndarray]) -> dict:
+def train_style_profile(reference_images: list[np.ndarray], preset_params: dict | None = None) -> dict:
     """
-    Build a style profile from reference images.
-
-    Computes aggregate statistics across all reference images to create
-    a target distribution the AI will match new photos toward.
-
-    Returns a JSON-serialisable dict that can be stored in the DB.
+    Build a style profile. Two tiers:
+    - Tier A (preset_params): Exact LR parameters stored directly
+    - Tier B (reference_images): Statistical learning aggregated
     """
-    if not reference_images:
-        return {"error": "No reference images provided"}
+    if not reference_images and not preset_params:
+        return {"error": "No reference images or preset provided"}
 
-    log.info(f"Training style from {len(reference_images)} reference images")
+    log.info(f"Training style from {len(reference_images)} reference images"
+             f"{' + preset baseline' if preset_params else ''}")
 
-    all_stats = [compute_channel_stats(img) for img in reference_images]
+    profile = {"version": "2.0", "has_preset": preset_params is not None}
 
-    # Aggregate: compute mean of all stats
-    profile = {}
-    keys = all_stats[0].keys()
+    if preset_params:
+        profile["preset"] = preset_params
 
-    for key in keys:
-        values = [s[key] for s in all_stats if key in s]
-        if isinstance(values[0], list):
-            # Histogram: average across images
-            arr = np.array(values)
-            profile[key] = np.mean(arr, axis=0).tolist()
-        else:
-            profile[key] = float(np.mean(values))
-
-    profile["num_reference_images"] = len(reference_images)
-    profile["version"] = "1.0"
+    if reference_images:
+        all_stats = [compute_channel_stats(img) for img in reference_images]
+        ref = {}
+        for key in all_stats[0].keys():
+            vals = [s[key] for s in all_stats if key in s]
+            if isinstance(vals[0], list):
+                ref[key] = np.mean(np.array(vals), axis=0).tolist()
+            else:
+                ref[key] = float(np.mean(vals))
+        profile["reference"] = ref
+        profile["num_reference_images"] = len(reference_images)
 
     return profile
 
 
-# ── Style Application ────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# STYLE APPLICATION (COMBINED)
+# ═══════════════════════════════════════════════════════════════
 
 def histogram_match_channel(source: np.ndarray, target_hist: np.ndarray) -> np.ndarray:
     """Match source channel histogram to target distribution."""
-    # Compute source CDF
-    source_hist, _ = np.histogram(source.flatten(), bins=256, range=(0, 256))
-    source_cdf = np.cumsum(source_hist).astype(float)
-    source_cdf /= source_cdf[-1]
-
-    # Compute target CDF
-    target_cdf = np.cumsum(target_hist).astype(float)
-    target_cdf /= target_cdf[-1]
-
-    # Build mapping
+    src_hist, _ = np.histogram(source.flatten(), bins=256, range=(0, 256))
+    src_cdf = np.cumsum(src_hist).astype(float)
+    src_cdf /= src_cdf[-1]
+    tgt_cdf = np.cumsum(target_hist).astype(float)
+    tgt_cdf /= tgt_cdf[-1]
     mapping = np.zeros(256, dtype=np.uint8)
-    for src_val in range(256):
-        # Find closest target value where CDFs match
-        diff = np.abs(source_cdf[src_val] - target_cdf)
-        mapping[src_val] = np.argmin(diff)
-
+    for v in range(256):
+        mapping[v] = np.argmin(np.abs(src_cdf[v] - tgt_cdf))
     return mapping[source]
 
 
 def apply_style(img_array: np.ndarray, style_profile: dict, intensity: float = 0.55) -> np.ndarray:
     """
     Apply a learned style profile to an image.
-
-    Args:
-        img_array: BGR image (OpenCV format)
-        style_profile: The trained profile dict
-        intensity: How strongly to apply (0.0 = no change, 1.0 = full match)
-
-    Returns:
-        Styled BGR image
+    v2.0: Preset baseline + reference refinement.
+    v1.0: Reference-only (backward compatible).
     """
     if len(img_array.shape) == 2:
         img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
 
+    version = style_profile.get("version", "1.0")
+
+    if version == "2.0":
+        result = img_array.copy()
+        preset = style_profile.get("preset")
+        if preset:
+            result = apply_preset_params(result, preset, intensity=min(intensity + 0.2, 1.0))
+            log.debug("Applied preset baseline")
+        ref = style_profile.get("reference")
+        if ref:
+            ref_intensity = intensity * 0.4 if preset else intensity
+            result = _apply_reference_style(result, ref, ref_intensity)
+            log.debug("Applied reference refinement")
+        return result
+
+    return _apply_reference_style(img_array, style_profile, intensity)
+
+
+def _apply_reference_style(img_array: np.ndarray, ref: dict, intensity: float) -> np.ndarray:
+    """Apply reference-learned style with luminance-preserving Reinhard colour transfer."""
     original = img_array.copy()
     result = img_array.copy().astype(float)
 
-    # Build skin mask to protect skin tones from aggressive shifts
-    hsv_orig = cv2.cvtColor(img_array, cv2.COLOR_BGR2HSV)
+    # Skin protection mask
     ycrcb = cv2.cvtColor(img_array, cv2.COLOR_BGR2YCrCb)
-    # Skin detection in YCrCb (more reliable across lighting)
-    skin_mask = (
-        (ycrcb[:, :, 1] >= 133) & (ycrcb[:, :, 1] <= 173) &
-        (ycrcb[:, :, 2] >= 77) & (ycrcb[:, :, 2] <= 127)
-    ).astype(float)
-    # Blur mask for smooth transitions
-    skin_mask = cv2.GaussianBlur(skin_mask, (21, 21), 0)
-    # Reduce intensity on skin areas (apply only 40% of the style shift to skin)
-    skin_protection = 1.0 - (skin_mask * 0.6)
+    skin = ((ycrcb[:, :, 1] >= 133) & (ycrcb[:, :, 1] <= 173) &
+            (ycrcb[:, :, 2] >= 77) & (ycrcb[:, :, 2] <= 127)).astype(float)
+    skin = cv2.GaussianBlur(skin, (21, 21), 0)
+    skin_prot = 1.0 - (skin * 0.6)
 
-    # 1. Histogram matching per BGR channel
-    for i, name in enumerate(["b", "g", "r"]):
-        hist_key = f"hist_{name}"
-        if hist_key in style_profile:
-            target_hist = np.array(style_profile[hist_key])
-            matched = histogram_match_channel(img_array[:, :, i], target_hist).astype(float)
-            # Apply with skin protection — less matching on skin
-            channel_intensity = intensity * skin_protection
-            result[:, :, i] = original[:, :, i].astype(float) * (1 - channel_intensity) + matched * channel_intensity
+    # Reinhard colour transfer in LAB (luminance-preserving)
+    if all(k in ref for k in ["mean_l", "std_l", "mean_a", "std_a", "mean_b_lab", "std_b_lab"]):
+        lab = cv2.cvtColor(img_array, cv2.COLOR_BGR2LAB).astype(float)
+        for i, ch in enumerate(["l", "a", "b_lab"]):
+            sm = np.mean(lab[:, :, i])
+            ss = np.std(lab[:, :, i]) + 1e-6
+            tm = ref[f"mean_{ch}"]
+            ts = ref.get(f"std_{ch}", ss)
+            transferred = (lab[:, :, i] - sm) * (ts / ss) + tm
+            ci = intensity * (0.3 if ch == "l" else 1.0)
+            ci_map = ci * skin_prot if ch != "l" else ci
+            lab[:, :, i] = lab[:, :, i] * (1 - ci_map) + transferred * ci_map
+        result = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(float)
+    elif any(f"hist_{c}" in ref for c in ["b", "g", "r"]):
+        for i, name in enumerate(["b", "g", "r"]):
+            hk = f"hist_{name}"
+            if hk in ref:
+                matched = histogram_match_channel(img_array[:, :, i], np.array(ref[hk])).astype(float)
+                ci = intensity * skin_prot * 0.5
+                result[:, :, i] = original[:, :, i].astype(float) * (1 - ci) + matched * ci
+        result = np.clip(result, 0, 255).astype(np.uint8).astype(float)
 
-    result = np.clip(result, 0, 255).astype(np.uint8)
+    # White balance
+    if "wb_a" in ref and "wb_b" in ref:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(float)
+        wb_str = intensity * 0.3
+        lab[:, :, 1] += (ref["wb_a"] - np.mean(lab[:, :, 1])) * wb_str
+        lab[:, :, 2] += (ref["wb_b"] - np.mean(lab[:, :, 2])) * wb_str
+        result = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR).astype(float)
 
-    # 2. White balance adjustment
-    if "wb_a" in style_profile and "wb_b" in style_profile:
-        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB).astype(float)
+    # Saturation
+    if "mean_saturation" in ref:
+        hsv = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(float)
+        cur = np.mean(hsv[:, :, 1])
+        tgt = ref["mean_saturation"]
+        if cur > 0:
+            ratio = max(0.7, min(1.5, tgt / (cur + 1e-6)))
+            hsv[:, :, 1] *= 1.0 + (ratio - 1.0) * intensity * 0.4
+            result = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR).astype(float)
 
-        current_a = np.mean(lab[:, :, 1])
-        current_b = np.mean(lab[:, :, 2])
-        target_a = style_profile["wb_a"]
-        target_b = style_profile["wb_b"]
-
-        # Shift a/b channels toward target (scaled by intensity)
-        wb_strength = intensity * 0.35  # WB is subtle — don't overcorrect
-        lab[:, :, 1] += (target_a - current_a) * wb_strength
-        lab[:, :, 2] += (target_b - current_b) * wb_strength
-        lab = np.clip(lab, 0, 255).astype(np.uint8)
-
-        result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-    # 3. Saturation adjustment
-    if "mean_saturation" in style_profile:
-        hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(float)
-        current_sat = np.mean(hsv[:, :, 1])
-        target_sat = style_profile["mean_saturation"]
-
-        if current_sat > 0:
-            sat_ratio = target_sat / (current_sat + 1e-6)
-            # Limit range to avoid extreme shifts
-            sat_ratio = max(0.7, min(1.5, sat_ratio))
-            sat_adjustment = 1.0 + (sat_ratio - 1.0) * intensity * 0.5
-            hsv[:, :, 1] *= sat_adjustment
-            hsv = np.clip(hsv, 0, 255).astype(np.uint8)
-            result = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
-    # 4. Contrast/tonality (shadow lift, highlight compression)
-    if "shadow_mean" in style_profile:
-        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB).astype(float)
+    # Shadow/highlight tonality
+    if "shadow_mean" in ref:
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(float)
         L = lab[:, :, 0]
-
-        current_shadow = np.mean(L[L < 85]) if np.any(L < 85) else 40
-        target_shadow = style_profile.get("shadow_mean", 40)
-
-        # Lift shadows if the reference style has lifted shadows
-        if target_shadow > current_shadow:
-            shadow_mask = (L < 85).astype(float)
-            lift = (target_shadow - current_shadow) * intensity * 0.3
-            L += shadow_mask * lift
-
+        cs = np.mean(L[L < 85]) if np.any(L < 85) else 40
+        ts = ref.get("shadow_mean", 40)
+        if ts > cs:
+            L += (L < 85).astype(float) * (ts - cs) * intensity * 0.25
+        ch = np.mean(L[L > 170]) if np.any(L > 170) else 200
+        th = ref.get("highlight_mean", 200)
+        if abs(th - ch) > 2:
+            L += (L > 170).astype(float) * (th - ch) * intensity * 0.2
         lab[:, :, 0] = np.clip(L, 0, 255)
-        lab = lab.astype(np.uint8)
-        result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(float)
 
-    return result
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
-# ── Convenience: Load Reference Images ───────────────────────
+# ═══════════════════════════════════════════════════════════════
+# CONVENIENCE
+# ═══════════════════════════════════════════════════════════════
 
 def load_image_from_bytes(image_bytes: bytes) -> Optional[np.ndarray]:
     """Decode image bytes to BGR numpy array."""
@@ -245,11 +396,9 @@ def load_image_from_bytes(image_bytes: bytes) -> Optional[np.ndarray]:
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is not None:
         return img
-
-    # Fallback for formats OpenCV can't handle
     try:
         pil_img = Image.open(io.BytesIO(image_bytes))
         pil_img = pil_img.convert("RGB")
-        return np.array(pil_img)[:, :, ::-1]  # RGB → BGR
+        return np.array(pil_img)[:, :, ::-1]
     except Exception:
         return None

@@ -641,10 +641,17 @@ export async function bulkUpdatePhotos(ids: string[], updates: Partial<Photo>): 
 // ============================================
 
 export async function getStyleProfiles(): Promise<StyleProfile[]> {
+  const photographer = await getCurrentPhotographer();
+  if (!photographer) {
+    console.error('No photographer profile — cannot fetch style profiles');
+    return [];
+  }
+
   const sb = supabase();
   const { data, error } = await sb
     .from('style_profiles')
     .select('*')
+    .eq('photographer_id', photographer.id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -749,35 +756,124 @@ export async function uploadPhotoToStorage(
   galleryId: string,
   onProgress?: (progress: number) => void
 ): Promise<{ storageKey: string; publicUrl: string } | null> {
-  // Path: photos/{photographer_id}/{gallery_id}/originals/{filename}
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const timestamp = Date.now();
   const storageKey = `${photographerId}/${galleryId}/originals/${timestamp}_${safeName}`;
 
-  // Upload via server-side API route (has proper auth session)
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('storageKey', storageKey);
+  // For files > 4MB, use signed upload URL (direct to Supabase, bypasses Vercel 4.5MB limit)
+  // For smaller files, use the existing server-side route (simpler)
+  const SIGNED_URL_THRESHOLD = 4 * 1024 * 1024; // 4MB
 
   try {
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    if (file.size > SIGNED_URL_THRESHOLD) {
+      // Get signed upload URL from our API
+      const urlRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storageKey,
+          contentType: file.type || 'application/octet-stream',
+        }),
+      });
 
-    const result = await res.json();
+      const urlResult = await urlRes.json();
+      if (!urlRes.ok || urlResult.error) {
+        console.error('Failed to get signed upload URL:', urlResult.error);
+        return null;
+      }
 
-    if (!res.ok || result.error) {
-      console.error('Error uploading file:', result.error);
-      return null;
+      // Upload directly to Supabase Storage using the signed URL
+      const uploadRes = await fetch(urlResult.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('Direct upload failed:', errText);
+        return null;
+      }
+
+      return { storageKey, publicUrl: '' };
+    } else {
+      // Small file — use existing server-side route
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('storageKey', storageKey);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        console.error('Error uploading file:', result.error);
+        return null;
+      }
+
+      return { storageKey: result.storageKey, publicUrl: '' };
     }
-
-    return {
-      storageKey: result.storageKey,
-      publicUrl: '',
-    };
   } catch (err) {
     console.error('Error uploading file:', err);
+    return null;
+  }
+}
+
+export async function uploadStyleFileToStorage(
+  file: File,
+  photographerId: string,
+  styleFolderName: string,
+): Promise<string | null> {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storageKey = `${photographerId}/styles/${styleFolderName}/${Date.now()}_${safeName}`;
+
+  try {
+    const SIGNED_URL_THRESHOLD = 4 * 1024 * 1024;
+
+    if (file.size > SIGNED_URL_THRESHOLD) {
+      const urlRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storageKey, contentType: file.type || 'application/octet-stream' }),
+      });
+
+      const urlResult = await urlRes.json();
+      if (!urlRes.ok || urlResult.error) {
+        console.error('Failed to get signed URL for style file:', urlResult.error);
+        return null;
+      }
+
+      const uploadRes = await fetch(urlResult.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        console.error('Direct upload failed for style file');
+        return null;
+      }
+
+      return storageKey;
+    } else {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('storageKey', storageKey);
+
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        console.error('Error uploading style file:', result.error);
+        return null;
+      }
+      return result.storageKey;
+    }
+  } catch (err) {
+    console.error('Error uploading style file:', err);
     return null;
   }
 }
@@ -994,7 +1090,7 @@ export async function getUploadableJobs(): Promise<Job[]> {
   const { data, error } = await sb
     .from('jobs')
     .select('*, client:clients(first_name, last_name)')
-    .in('status', ['upcoming', 'in_progress'])
+    .in('status', ['upcoming', 'in_progress', 'editing', 'ready_for_review'])
     .order('date', { ascending: false });
 
   if (error) {
