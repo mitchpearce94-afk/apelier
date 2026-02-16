@@ -189,8 +189,11 @@ def run_pipeline(
                     "original_key": photo["original_key"],
                     "filename": photo.get("filename", "unknown"),
                     "quality_score": result["quality_score"],
+                    "quality_details": result["quality_details"],
                     "scene_type": result["scene_type"],
                     "face_data": result["face_data"],
+                    "face_count": result["face_count"],
+                    "characteristics": result.get("characteristics", {}),
                     "phash": result["phash"],
                 })
                 # Don't store image_bytes — re-download in Phase 1 to save memory
@@ -249,7 +252,13 @@ def run_pipeline(
 
                 if style_profile:
                     intensity = settings.get("style_intensity", 0.75)
-                    img = apply_style(img, style_profile, intensity=intensity)
+                    image_context = {
+                        "scene_type": result.get("scene_type", "unknown"),
+                        "face_count": result.get("face_count", 0),
+                        "characteristics": result.get("characteristics", {}),
+                        "quality_details": result.get("quality_details", {}),
+                    }
+                    img = apply_style(img, style_profile, intensity=intensity, image_context=image_context)
 
                 result["processed_img"] = img
 

@@ -329,14 +329,122 @@ def histogram_match_channel(source: np.ndarray, target_hist: np.ndarray) -> np.n
     return mapping[source]
 
 
-def apply_style(img_array: np.ndarray, style_profile: dict, intensity: float = 0.75) -> np.ndarray:
+def compute_adaptive_adjustments(image_context: dict) -> dict:
     """
-    Apply a learned style profile to an image.
-    v2.0: Preset baseline + reference refinement.
+    Compute per-image adjustments based on Phase 0 analysis.
+    Returns modifiers that scale preset/style parameters up or down.
+    """
+    chars = image_context.get("characteristics", {})
+    scene = image_context.get("scene_type", "unknown")
+    face_count = image_context.get("face_count", 0)
+    quality = image_context.get("quality_details", {})
+
+    adj = {
+        "exposure_shift": 0.0,      # added to preset exposure (-1 to +1 range, maps to -100..+100)
+        "contrast_mod": 1.0,        # multiplier on contrast adjustment
+        "highlights_shift": 0.0,    # extra highlight recovery
+        "shadows_shift": 0.0,       # extra shadow lift
+        "warmth_shift": 0.0,        # extra warmth (LAB b offset)
+        "saturation_mod": 1.0,      # multiplier on saturation
+        "clarity_mod": 1.0,         # multiplier on clarity
+        "sharpness_mod": 1.0,       # multiplier on sharpening
+        "skin_protect": 0.4,        # skin protection strength (higher = more protection)
+        "vignette_mod": 1.0,        # multiplier on vignette
+    }
+
+    if not chars:
+        return adj
+
+    exposure_bias = chars.get("exposure_bias", 0.0)
+    is_backlit = chars.get("is_backlit", False)
+    is_noisy = chars.get("is_noisy", False)
+    is_low_contrast = chars.get("is_low_contrast", False)
+    mean_brightness = chars.get("mean_brightness", 128)
+    dynamic_range = chars.get("dynamic_range", 200)
+    mean_saturation = chars.get("mean_saturation", 100)
+
+    # ── Exposure correction ──
+    # Underexposed images: push exposure harder
+    if exposure_bias < -0.2:
+        adj["exposure_shift"] = abs(exposure_bias) * 0.4  # lift underexposed
+        adj["shadows_shift"] = abs(exposure_bias) * 0.3
+    # Overexposed: pull back slightly
+    elif exposure_bias > 0.25:
+        adj["exposure_shift"] = -exposure_bias * 0.2
+        adj["highlights_shift"] = -exposure_bias * 0.3
+
+    # ── Backlit subjects ──
+    if is_backlit:
+        adj["exposure_shift"] += 0.15
+        adj["shadows_shift"] += 0.25
+        adj["highlights_shift"] -= 0.2  # recover blown highlights
+        log.debug("Adaptive: backlit subject detected — lifting shadows, recovering highlights")
+
+    # ── Low contrast / flat images ──
+    if is_low_contrast:
+        adj["contrast_mod"] = 1.3
+        adj["clarity_mod"] = 1.2
+    elif chars.get("is_high_contrast", False):
+        adj["contrast_mod"] = 0.7
+
+    # ── Noisy images ──
+    if is_noisy:
+        adj["sharpness_mod"] = 0.4   # reduce sharpening on noisy images
+        adj["clarity_mod"] = 0.6     # reduce clarity too (amplifies noise)
+        log.debug("Adaptive: noisy image — reducing sharpness and clarity")
+
+    # ── Scene-specific adjustments ──
+    if scene == "portrait" or face_count > 0:
+        adj["skin_protect"] = 0.6   # stronger skin protection for portraits
+        adj["clarity_mod"] *= 0.8   # softer clarity for portraits (flattering)
+        adj["sharpness_mod"] *= 0.85
+        if face_count >= 3:
+            # Group shots: ensure everyone is visible
+            adj["shadows_shift"] += 0.1
+
+    elif scene == "landscape":
+        adj["clarity_mod"] *= 1.3   # landscapes benefit from clarity
+        adj["saturation_mod"] = 1.1
+        adj["vignette_mod"] = 1.2
+
+    elif scene in ("ceremony", "reception"):
+        # Indoor events: often underexposed with mixed lighting
+        if mean_brightness < 110:
+            adj["exposure_shift"] += 0.1
+            adj["shadows_shift"] += 0.15
+
+    elif scene == "detail":
+        adj["clarity_mod"] *= 1.2
+        adj["sharpness_mod"] *= 1.2
+
+    # ── Already saturated images: don't oversaturate ──
+    if mean_saturation > 160:
+        adj["saturation_mod"] *= 0.7
+    elif mean_saturation < 50:
+        adj["saturation_mod"] *= 1.2
+
+    # ── Narrow dynamic range: be gentler with contrast ──
+    if dynamic_range < 120:
+        adj["contrast_mod"] *= 0.8
+    elif dynamic_range > 220:
+        adj["highlights_shift"] -= 0.1
+        adj["shadows_shift"] += 0.1
+
+    return adj
+
+
+def apply_style(img_array: np.ndarray, style_profile: dict, intensity: float = 0.75,
+                image_context: dict | None = None) -> np.ndarray:
+    """
+    Apply a learned style profile to an image, adaptively adjusted per-image.
+    v2.0: Preset baseline (scene-adapted) + reference refinement.
     v1.0: Reference-only (backward compatible).
     """
     if len(img_array.shape) == 2:
         img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
+
+    image_context = image_context or {}
+    adjustments = compute_adaptive_adjustments(image_context)
 
     version = style_profile.get("version", "1.0")
 
@@ -344,37 +452,76 @@ def apply_style(img_array: np.ndarray, style_profile: dict, intensity: float = 0
         result = img_array.copy()
         preset = style_profile.get("preset")
         if preset:
-            result = apply_preset_params(result, preset, intensity=min(intensity + 0.15, 1.0))
-            log.debug("Applied preset baseline")
+            result = apply_preset_adaptive(result, preset, adjustments, intensity=min(intensity + 0.15, 1.0))
+            log.debug("Applied adaptive preset")
         ref = style_profile.get("reference")
         if ref:
             ref_intensity = intensity * 0.35 if preset else intensity
-            result = _apply_reference_style(result, ref, ref_intensity)
+            result = _apply_reference_style(result, ref, ref_intensity, adjustments)
             log.debug("Applied reference refinement")
         return result
 
-    return _apply_reference_style(img_array, style_profile, intensity)
+    return _apply_reference_style(img_array, style_profile, intensity, adjustments)
 
 
-def _apply_reference_style(img_array: np.ndarray, ref: dict, intensity: float) -> np.ndarray:
+def apply_preset_adaptive(img_array: np.ndarray, preset: dict, adj: dict,
+                          intensity: float = 0.85) -> np.ndarray:
+    """Apply preset parameters with per-image adaptive adjustments."""
+    # Build a modified preset with adjustments applied
+    adapted = dict(preset)
+
+    # Exposure
+    base_exp = adapted.get("exposure", 0.0)
+    adapted["exposure"] = base_exp + adj["exposure_shift"] * 100.0
+
+    # Contrast
+    base_contrast = adapted.get("contrast", 0.0)
+    adapted["contrast"] = base_contrast * adj["contrast_mod"]
+
+    # Highlights
+    base_hi = adapted.get("highlights", 0.0)
+    adapted["highlights"] = base_hi + adj["highlights_shift"] * 100.0
+
+    # Shadows
+    base_sh = adapted.get("shadows", 0.0)
+    adapted["shadows"] = base_sh + adj["shadows_shift"] * 100.0
+
+    # Clarity
+    base_clar = adapted.get("clarity", 0.0)
+    adapted["clarity"] = base_clar * adj["clarity_mod"]
+
+    # Saturation & vibrance
+    base_sat = adapted.get("saturation", 0.0)
+    adapted["saturation"] = base_sat * adj["saturation_mod"]
+    base_vib = adapted.get("vibrance", 0.0)
+    adapted["vibrance"] = base_vib * adj["saturation_mod"]
+
+    # Sharpening
+    base_sharp = adapted.get("sharpness", 0.0)
+    adapted["sharpness"] = base_sharp * adj["sharpness_mod"]
+
+    # Vignette
+    base_vig = adapted.get("vignette_amount", 0.0)
+    adapted["vignette_amount"] = base_vig * adj["vignette_mod"]
+
+    return apply_preset_params(img_array, adapted, intensity=intensity)
+
+
+def _apply_reference_style(img_array: np.ndarray, ref: dict, intensity: float,
+                           adj: dict | None = None) -> np.ndarray:
     """
-    Apply reference-learned style using multi-method approach:
-    1. Per-channel histogram matching in LAB (strongest, matches full tonal distribution)
-    2. BGR histogram matching as supplement
-    3. Tone curve from learned percentiles
-    4. Lifted blacks / black point
-    5. Shadow/highlight colour cast
-    6. Saturation matching
-    All with skin protection.
+    Apply reference-learned style using multi-method approach with adaptive adjustments.
     """
+    adj = adj or {}
     result = img_array.copy()
 
-    # Skin protection mask
+    # Skin protection — strength adapted per scene
+    skin_strength = adj.get("skin_protect", 0.4)
     ycrcb = cv2.cvtColor(img_array, cv2.COLOR_BGR2YCrCb)
     skin = ((ycrcb[:, :, 1] >= 133) & (ycrcb[:, :, 1] <= 173) &
             (ycrcb[:, :, 2] >= 77) & (ycrcb[:, :, 2] <= 127)).astype(np.float32)
     skin = cv2.GaussianBlur(skin, (21, 21), 0)
-    skin_prot = 1.0 - (skin * 0.4)  # 40% protection on skin
+    skin_prot = 1.0 - (skin * skin_strength)
 
     # ── 1. PRIMARY: LAB histogram matching ──
     # This is the most powerful method — matches the entire tonal distribution

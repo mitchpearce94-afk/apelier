@@ -374,6 +374,9 @@ def analyse_image(image_bytes: bytes) -> dict:
     quality = score_quality(analysis_img)
     phash = compute_image_hash(analysis_img)
 
+    # Image characteristics for adaptive editing
+    characteristics = _compute_image_characteristics(analysis_img)
+
     return {
         "exif_data": exif,
         "scene_type": scene,
@@ -384,4 +387,82 @@ def analyse_image(image_bytes: bytes) -> dict:
         "phash": phash,
         "width": w,   # Original dimensions
         "height": h,
+        "characteristics": characteristics,
+    }
+
+
+def _compute_image_characteristics(img: np.ndarray) -> dict:
+    """Compute image characteristics used by adaptive preset system."""
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    L = lab[:, :, 0]
+    h_img, w_img = img.shape[:2]
+
+    # Brightness
+    mean_brightness = float(np.mean(L))
+    # How underexposed (0=correct, negative=under, positive=over)
+    exposure_bias = (mean_brightness - 128.0) / 128.0  # -1 to +1
+
+    # Contrast (std dev of luminance)
+    contrast = float(np.std(L))
+    is_low_contrast = contrast < 35
+    is_high_contrast = contrast > 65
+
+    # Clipping
+    dark_clip = float(np.mean(L < 10))    # % of pixels near black
+    bright_clip = float(np.mean(L > 245))  # % of pixels near white
+
+    # Backlit detection — bright background, dark foreground
+    center_h, center_w = h_img // 4, w_img // 4
+    center_L = L[center_h:3*center_h, center_w:3*center_w]
+    edge_L = np.mean([
+        np.mean(L[:center_h, :]),           # top
+        np.mean(L[3*center_h:, :]),         # bottom
+        np.mean(L[:, :center_w]),           # left
+        np.mean(L[:, 3*center_w:]),         # right
+    ])
+    center_mean = float(np.mean(center_L))
+    is_backlit = edge_L > center_mean + 30
+
+    # Colour temperature estimate from white balance
+    # LAB b channel: negative=blue/cool, positive=yellow/warm
+    wb_warmth = float(np.mean(lab[:, :, 2]))  # >128 = warm, <128 = cool
+    wb_tint = float(np.mean(lab[:, :, 1]))    # >128 = green-magenta
+
+    # Saturation
+    mean_saturation = float(np.mean(hsv[:, :, 1]))
+    is_desaturated = mean_saturation < 40
+    is_oversaturated = mean_saturation > 180
+
+    # Noise estimate (quick)
+    noise_sigma = float(np.mean(np.abs(
+        gray.astype(float) - cv2.GaussianBlur(gray, (5, 5), 0).astype(float)
+    )))
+    is_noisy = noise_sigma > 8
+
+    # Dynamic range
+    p2 = float(np.percentile(L, 2))
+    p98 = float(np.percentile(L, 98))
+    dynamic_range = p98 - p2
+
+    return {
+        "mean_brightness": mean_brightness,
+        "exposure_bias": round(exposure_bias, 3),
+        "contrast": contrast,
+        "is_low_contrast": is_low_contrast,
+        "is_high_contrast": is_high_contrast,
+        "dark_clip_pct": round(dark_clip, 4),
+        "bright_clip_pct": round(bright_clip, 4),
+        "is_backlit": is_backlit,
+        "wb_warmth": wb_warmth,
+        "wb_tint": wb_tint,
+        "mean_saturation": mean_saturation,
+        "is_desaturated": is_desaturated,
+        "is_noisy": is_noisy,
+        "noise_sigma": round(noise_sigma, 2),
+        "dynamic_range": round(dynamic_range, 1),
+        "l_p2": round(p2, 1),
+        "l_p98": round(p98, 1),
     }
