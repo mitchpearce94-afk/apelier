@@ -514,36 +514,35 @@ def _apply_basic_adjustments(img_array: np.ndarray, adj: dict) -> np.ndarray:
 def apply_preset_adaptive(img_array: np.ndarray, preset: dict, adj: dict,
                           intensity: float = 0.85) -> np.ndarray:
     """Apply preset parameters with per-image adaptive adjustments."""
-    # Build a modified preset with adjustments applied
     adapted = dict(preset)
 
-    # Exposure
+    # Exposure is in STOPS (-5 to +5). Adaptive shift is 0-0.4 stops.
     base_exp = adapted.get("exposure", 0.0)
-    adapted["exposure"] = base_exp + adj["exposure_shift"] * 100.0
+    adapted["exposure"] = base_exp + adj["exposure_shift"]
 
-    # Contrast
+    # Contrast is on -100 to +100 scale. Mod is a multiplier ~0.7-1.3.
     base_contrast = adapted.get("contrast", 0.0)
     adapted["contrast"] = base_contrast * adj["contrast_mod"]
 
-    # Highlights
+    # Highlights/shadows are on -100 to +100 scale. Shifts are -0.3 to +0.3.
+    # Scale shifts to the same -100 to +100 range.
     base_hi = adapted.get("highlights", 0.0)
-    adapted["highlights"] = base_hi + adj["highlights_shift"] * 100.0
+    adapted["highlights"] = base_hi + adj["highlights_shift"] * 30.0
 
-    # Shadows
     base_sh = adapted.get("shadows", 0.0)
-    adapted["shadows"] = base_sh + adj["shadows_shift"] * 100.0
+    adapted["shadows"] = base_sh + adj["shadows_shift"] * 30.0
 
-    # Clarity
+    # Clarity on -100 to +100. Mod is multiplier.
     base_clar = adapted.get("clarity", 0.0)
     adapted["clarity"] = base_clar * adj["clarity_mod"]
 
-    # Saturation & vibrance
+    # Saturation & vibrance on -100 to +100. Mod is multiplier.
     base_sat = adapted.get("saturation", 0.0)
     adapted["saturation"] = base_sat * adj["saturation_mod"]
     base_vib = adapted.get("vibrance", 0.0)
     adapted["vibrance"] = base_vib * adj["saturation_mod"]
 
-    # Sharpening
+    # Sharpening on 0-150. Mod is multiplier.
     base_sharp = adapted.get("sharpness", 0.0)
     adapted["sharpness"] = base_sharp * adj["sharpness_mod"]
 
