@@ -416,14 +416,41 @@ export async function getGalleries(): Promise<Gallery[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('galleries')
-    .select('*, client:clients(first_name, last_name), job:jobs(title)')
+    .select('*, client:clients(first_name, last_name), job:jobs(title), photos(id, thumb_key, is_culled)')
     .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Error fetching galleries:', error);
     return [];
   }
-  return data || [];
+
+  // Compute photo_count and extract first thumb for cover
+  const galleries = (data || []).map((g: any) => {
+    const activePhotos = (g.photos || []).filter((p: any) => !p.is_culled);
+    const firstThumb = activePhotos.find((p: any) => p.thumb_key)?.thumb_key || null;
+    return {
+      ...g,
+      photo_count: activePhotos.length,
+      cover_thumb_key: firstThumb,
+      photos: undefined, // strip raw photos array from gallery object
+    };
+  });
+
+  // Batch sign cover thumbnails
+  const keysToSign = galleries
+    .map((g: any) => g.cover_thumb_key)
+    .filter(Boolean) as string[];
+
+  if (keysToSign.length > 0) {
+    const urlMap = await getSignedUrls(keysToSign);
+    for (const g of galleries) {
+      if (g.cover_thumb_key) {
+        (g as any).cover_thumb_url = urlMap.get(g.cover_thumb_key) || null;
+      }
+    }
+  }
+
+  return galleries;
 }
 
 // ============================================
@@ -921,6 +948,13 @@ export async function createPhotoRecord(photo: {
 }
 
 export async function createGalleryForJob(jobId: string, title: string): Promise<Gallery | null> {
+  // Check if a gallery already exists for this job — prevent duplicates
+  const existing = await getGalleryForJob(jobId);
+  if (existing) {
+    console.log('[createGalleryForJob] Gallery already exists for job', jobId, '— returning existing');
+    return existing;
+  }
+
   const photographer = await getCurrentPhotographer();
   if (!photographer) {
     console.error('No photographer profile found — cannot create gallery');
@@ -942,6 +976,13 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
     ? new Date(Date.now() + defaultExpiryDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
+  // Generate a URL-safe slug from the title
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60) + '-' + Date.now().toString(36);
+
   const { data, error } = await sb
     .from('galleries')
     .insert({
@@ -949,6 +990,7 @@ export async function createGalleryForJob(jobId: string, title: string): Promise
       job_id: jobId,
       client_id: job?.client_id || null,
       title,
+      slug,
       status: 'ready',
       access_type: defaultAccessType,
       view_count: 0,

@@ -43,7 +43,7 @@ export async function sendGalleryDeliveryEmail(options: {
     galleryUrl: options.galleryUrl,
     photographerName: options.photographerName,
     businessName: options.businessName,
-    brandColor: options.brandColor || '#6366f1',
+    brandColor: options.brandColor || '#b8860b',
     photoCount: options.photoCount || '',
     expiryDate: options.expiryDate || '',
   });
@@ -68,7 +68,7 @@ export async function sendBookingConfirmationEmail(options: {
     location: options.location || '',
     photographerName: options.photographerName,
     businessName: options.businessName,
-    brandColor: options.brandColor || '#6366f1',
+    brandColor: options.brandColor || '#b8860b',
   });
 }
 
@@ -91,7 +91,7 @@ export async function sendInvoiceEmail(options: {
     jobTitle: options.jobTitle,
     photographerName: options.photographerName,
     businessName: options.businessName,
-    brandColor: options.brandColor || '#6366f1',
+    brandColor: options.brandColor || '#b8860b',
   });
 }
 
@@ -110,6 +110,6 @@ export async function sendContractSigningEmail(options: {
     signingUrl: options.signingUrl,
     photographerName: options.photographerName,
     businessName: options.businessName,
-    brandColor: options.brandColor || '#6366f1',
+    brandColor: options.brandColor || '#b8860b',
   });
 }

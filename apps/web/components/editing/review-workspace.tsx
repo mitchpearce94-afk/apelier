@@ -181,7 +181,22 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   };
 
   const handleReject = async (photoId: string) => {
-    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p)));
+    setPhotos((prev) => {
+      const updated = prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p));
+      // Check if all photos are now culled — auto cleanup
+      const remaining = updated.filter((p) => !p.is_culled);
+      if (remaining.length === 0 && !useMockData) {
+        // Delete processing job and navigate back
+        fetch('/api/processing-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', processing_job_id: processingJob.id }),
+        }).then(() => {
+          onBack();
+        }).catch(console.error);
+      }
+      return updated;
+    });
     const idx = filtered.findIndex((p) => p.id === photoId);
     if (idx < filtered.length - 1) setSelectedPhoto(filtered[idx + 1]);
     else setSelectedPhoto(null);

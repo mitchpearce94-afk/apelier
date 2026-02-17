@@ -6,15 +6,14 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDate } from '@/lib/utils';
 import { getGalleries } from '@/lib/queries';
-import { generateMockGalleries } from '@/components/galleries/mock-data';
 import { GalleryDetail } from '@/components/galleries/gallery-detail';
 import type { Gallery } from '@/lib/types';
 import {
-  ImageIcon, Eye, Share2, Wand2, Search, Copy, Check,
-  Lock, Globe, Mail, Sparkles, Camera, ExternalLink,
+  ImageIcon, Eye, Share2, Search, Copy, Check,
+  Lock, Globe, Mail, Camera, ExternalLink,
 } from 'lucide-react';
 
-type FilterStatus = 'all' | 'ready' | 'delivered' | 'processing';
+type FilterStatus = 'ready' | 'delivered' | 'all';
 
 function GalleryCard({ gallery, onClick }: { gallery: Gallery; onClick: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -22,7 +21,7 @@ function GalleryCard({ gallery, onClick }: { gallery: Gallery; onClick: () => vo
     ? `${gallery.client.first_name} ${gallery.client.last_name || ''}`.trim()
     : undefined;
 
-  const galleryUrl = `https://gallery.aperturesuite.com/${gallery.slug || gallery.id}`;
+  const galleryUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/gallery/${gallery.slug || gallery.id}`;
 
   const copyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -35,22 +34,19 @@ function GalleryCard({ gallery, onClick }: { gallery: Gallery; onClick: () => vo
     : gallery.access_type === 'email' ? Mail
     : Globe;
 
+  const coverUrl = (gallery as any).cover_thumb_url;
+
   return (
     <div
       onClick={onClick}
       className="rounded-xl border border-white/[0.06] bg-[#0c0c16] hover:border-white/[0.12] transition-all cursor-pointer group overflow-hidden"
     >
       {/* Cover area */}
-      <div className="relative h-32 sm:h-36 bg-gradient-to-br from-indigo-500/5 to-violet-500/5 flex items-center justify-center">
-        <Camera className="w-8 h-8 text-slate-800" />
-
-        {gallery.status === 'processing' && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[1px]">
-            <div className="flex items-center gap-2 text-xs text-white">
-              <Wand2 className="w-3.5 h-3.5 animate-pulse" />
-              <span>AI Processing...</span>
-            </div>
-          </div>
+      <div className="relative h-32 sm:h-36 bg-gradient-to-br from-amber-500/5 to-yellow-500/5 flex items-center justify-center overflow-hidden">
+        {coverUrl ? (
+          <img src={coverUrl} alt={gallery.title} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300" />
+        ) : (
+          <Camera className="w-8 h-8 text-slate-800" />
         )}
 
         <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
@@ -109,33 +105,35 @@ export default function GalleriesPage() {
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterStatus>('all');
+  const [filter, setFilter] = useState<FilterStatus>('ready');
   const [selectedGallery, setSelectedGallery] = useState<Gallery | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         const data = await getGalleries();
-        if (data.length === 0) {
-          setUseMockData(true);
-          setGalleries(generateMockGalleries());
-        } else {
-          setGalleries(data);
-        }
+        setGalleries(data);
       } catch {
-        setUseMockData(true);
-        setGalleries(generateMockGalleries());
+        setGalleries([]);
       }
       setLoading(false);
     }
     load();
   }, []);
 
+  // Refresh galleries when returning from detail view
+  const handleBack = async () => {
+    setSelectedGallery(null);
+    try {
+      const data = await getGalleries();
+      setGalleries(data);
+    } catch {}
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -144,7 +142,7 @@ export default function GalleriesPage() {
     return (
       <GalleryDetail
         gallery={selectedGallery}
-        onBack={() => setSelectedGallery(null)}
+        onBack={handleBack}
         onUpdate={(updated) => {
           setSelectedGallery(updated);
           setGalleries(prev => prev.map(g => g.id === updated.id ? updated : g));
@@ -160,44 +158,38 @@ export default function GalleriesPage() {
   });
 
   const statusCounts = {
-    all: galleries.length,
     ready: galleries.filter((g) => g.status === 'ready').length,
     delivered: galleries.filter((g) => g.status === 'delivered').length,
-    processing: galleries.filter((g) => g.status === 'processing').length,
+    all: galleries.length,
   };
+
+  const totalPhotos = galleries.reduce((sum, g) => sum + (g.photo_count || 0), 0);
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Galleries</h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5 sm:mt-1">
-          {galleries.length} galler{galleries.length !== 1 ? 'ies' : 'y'} · {galleries.reduce((sum, g) => sum + (g.photo_count || 0), 0)} photos
+          {galleries.length} galler{galleries.length !== 1 ? 'ies' : 'y'} · {totalPhotos} photos
         </p>
       </div>
-
-      {useMockData && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
-          <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Showing demo data — galleries will appear here once you send photos from Auto Editor.</span>
-        </div>
-      )}
 
       {/* Filter tabs + search */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-          {(['all', 'ready', 'delivered', 'processing'] as FilterStatus[]).map((s) => (
+          {(['ready', 'delivered', 'all'] as FilterStatus[]).map((s) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
               className={`px-3 py-1.5 text-[11px] rounded-full whitespace-nowrap border transition-all ${
                 filter === s
-                  ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300'
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                   : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
               }`}
             >
               {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
               {statusCounts[s] > 0 && (
-                <span className={`ml-1.5 ${filter === s ? 'text-indigo-400' : 'text-slate-600'}`}>{statusCounts[s]}</span>
+                <span className={`ml-1.5 ${filter === s ? 'text-amber-400' : 'text-slate-600'}`}>{statusCounts[s]}</span>
               )}
             </button>
           ))}
@@ -209,7 +201,7 @@ export default function GalleriesPage() {
             placeholder="Search galleries..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all"
+            className="w-full pl-9 pr-4 py-2 text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
           />
         </div>
       </div>

@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { subject, html } = getEmailContent(template, data);
-    const fromAddress = process.env.RESEND_FROM_EMAIL || 'noreply@aperturesuite.com';
+    const fromAddress = process.env.RESEND_FROM_EMAIL || 'noreply@apelier.com.au';
 
     const response = await fetch(RESEND_API, {
       method: 'POST',

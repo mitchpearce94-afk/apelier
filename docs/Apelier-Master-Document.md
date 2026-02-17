@@ -1,7 +1,7 @@
 # Apelier — Master Document
 
-**Version:** 3.6  
-**Last Updated:** 15 February 2026 (Send-to-gallery & deliver-to-client fully working via server API, job status flow fixed, client gallery with signed URLs, image quality improvements, processing queue polish, mock data removed)  
+**Version:** 3.7  
+**Last Updated:** 17 February 2026 (Preset application bug fixed — catastrophic `*100` multiplier on exposure/highlights/shadows causing destroyed images. Cost model verified against Modal pricing. Investor pitch deck with correct unit economics. Histogram matching + preset both disabled pending GPU neural approach.)  
 **Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
 **GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
 **Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
@@ -524,9 +524,13 @@ aperture-suite/
 - **Duplicate grouping:** Perceptual hashing (DCT-based), Hamming distance threshold
 
 ### Phase 1 — Style Application (CPU — `phase1_style.py`)
-- **Training:** Analyse 50-200+ reference images → extract per-channel histograms (BGR, LAB), white balance (a/b channels), saturation, shadow/midtone/highlight means → aggregate into style profile JSON
-- **Application:** Histogram matching per channel, white balance shift, saturation adjustment, shadow lift
-- **Intensity parameter** (0.0-1.0) controls strength of style application
+- **Preset parsing:** Lightroom `.xmp` and `.lrtemplate` presets parsed via `preset_parser.py` — extracts ~50-80 parameters (exposure, contrast, highlights, shadows, tone curves, HSL shifts, split toning, sharpening, vibrance, clarity, etc.)
+- **Preset application:** `apply_preset_params()` applies parsed values to images using LAB/HSV colour space operations — exposure (stops), contrast (S-curve), highlights/shadows/whites/blacks (luminance range masks), HSL per-channel shifts, split toning, clarity (local contrast), vibrance (saturation-aware boost with skin protection), sharpening, vignette, grain
+- **Adaptive adjustments:** `compute_adaptive_adjustments()` analyses each image's histogram, exposure, backlit status → computes per-image corrections (exposure shift, shadow lift, highlight recovery, contrast mod, saturation mod)
+- **Combined:** `apply_preset_adaptive()` merges preset baseline with per-image adaptive adjustments
+- **BUG FIXED (17 Feb):** `apply_preset_adaptive()` had `* 100.0` multiplier on exposure_shift and highlights/shadows_shift — exposure is in stops, so 0.15 shift became 15 stops (2^15 = 32,768× brightness). Fixed to add shift directly for exposure, scale by 30 for highlights/shadows
+- **CURRENT STATE:** Histogram matching disabled (overcorrecting — muddy greens, bad skin tones). Preset application fixed but basic adaptive adjustments only until GPU neural approach is built. Reference-only learning produces mediocre results (statistical averaging)
+- **NEXT:** GPU neural style transfer via Modal — 3D LUT predictor learns from before/after pairs (see Phase 1 GPU plan below)
 
 ### Phase 2 — Face & Skin Retouching (STUB — needs GPU)
 - Basic unsharp mask implemented as placeholder
@@ -558,11 +562,17 @@ aperture-suite/
 - Methods: `select`, `select_single`, `insert`, `update`, `update_many`, `storage_download`, `storage_upload`
 - Built-in numpy type sanitizer for JSON serialization
 
-### Cost Model (estimated)
-- Per-image GPU cost: $0.01-0.017 (when GPU phases enabled)
-- 4,000 photos/week × $0.015 = ~$240/month compute
-- Phases 0/1/4/5 run on CPU (no extra cost beyond Railway hosting)
-- Phases 2/3 ready to plug into Modal/Replicate when GPU enabled
+### Cost Model (verified against Modal pricing, 17 Feb 2026)
+- **GPU:** Modal A10G serverless @ US$0.000306/sec + CPU (2 cores) US$0.0000262/sec + RAM (8 GiB) US$0.0000178/sec = **US$0.000350/sec total**
+- **Per-image cost (conservative 4s pipeline):** US$0.0014 → **A$0.00217/image** (at 1.55 AUD/USD)
+- **Per-image cost (realistic 2s pipeline):** US$0.0007 → **A$0.00108/image**
+- **Per wedding (500 photos):** A$0.54 (realistic) to A$1.08 (conservative)
+- **Tier margins at max usage (conservative 4s):** Starter A$4.34 GPU/A$39 price = 89% margin | Pro A$21.70/A$109 = 80% | Studio A$54.24/A$279 = 81%
+- **Tier margins at realistic 2s:** Starter 94% | Pro 90% | Studio 90%
+- **Fixed infra:** Supabase Pro US$25 + Vercel Pro US$20 + Railway Pro US$20 + misc = **~A$104/month** — covered by 2–3 subscribers
+- Phases 0/4/5 run on CPU (no extra cost beyond Railway hosting)
+- Phases 1/2/3 run on Modal GPU (serverless, zero idle cost)
+- **3D LUT approach:** <600K parameters, processes 4K image in <2ms after LUT generation (Zeng et al., 2020). Total pipeline time dominated by LUT prediction + scene analysis, not LUT application
 
 ### Local Development
 ```powershell
@@ -793,6 +803,16 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 
 ## 17. Session History
 
+### Session: 16–17 Feb 2026 — Preset Bug Fix, Cost Verification, Investor Pitch
+- **CRITICAL BUG FIXED:** `apply_preset_adaptive()` in `phase1_style.py` had `* 100.0` multiplier on `exposure_shift`, `highlights_shift`, and `shadows_shift`. Exposure is in stops — a 0.15 adaptive shift became +15 stops (32,768× brightness), destroying every image. Fixed: exposure shift adds directly in stops, highlights/shadows scale by 30 instead of 100
+- **Preset confirmed parsing correctly:** Wedding.xmp preset (highlights -74, shadows +50, vibrance +45, 8 HSL channels, split toning, tone curves) all extracted accurately by `preset_parser.py`
+- **Histogram matching previously disabled** (session before) due to overcorrecting — muddy greens, bad skin tones
+- **Cost model fully verified** against Modal pricing page (modal.com/pricing). Previous estimates of $0.01–0.017/image were ~10× too high. Actual cost: A$0.001–0.002/image on A10G
+- **Investor pitch deck created** (14-slide branded HTML) with correct unit economics, all numbers traced to sources
+- **Railway upgraded to Pro** (8GB memory limit, pay-per-use ~$5-10/mo)
+- **Style trainer fixed:** One-at-a-time image processing to prevent OOM on 104 training images
+- **DB note:** Style profile may be stuck in "training" status after OOM crash — fix: `UPDATE style_profiles SET status = 'ready', training_completed_at = now() WHERE id = '...' AND status = 'training'`
+
 ### Features Added (15 Feb 2026 — Railway Deployment, Style Training, Review Workspace)
 - AI engine deployed to Railway (production)
 - Style training wired end-to-end (upload refs → train → poll status)
@@ -810,7 +830,7 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 - **Before/after preview fixed:** Removed fixed `aspect-[3/2]` container, changed to flexible height with `object-contain` — portrait photos no longer cropped
 - **Client-facing gallery with signed URLs:** New `/api/gallery-photos` route generates server-side signed URLs (1-hour expiry) for thumb/web/full-res. Client gallery page loads photos via this API. Auto-unlocks if password access but no password set
 - **Download buttons work:** Client gallery download calls API for signed URL, triggers browser download. Defaults to full-res (`edited_key`)
-- **Image quality improvements:** AI engine outputs full-res at 95 quality, web at 92, thumb at 80 (separate settings prevent double-compression). Download defaults to full-res
+- **Image quality improvements:** AI engine outputs full-res at 95 quality, web at 92, thumb at 80 (separate settings prevent double-compression quality loss)
 - **New gallery default access type:** `public` instead of `password` (most photographers want public galleries)
 
 ### Known Issues (to fix)
@@ -818,21 +838,29 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 - **Click-to-browse button not working:** The file picker "click to browse" area in the upload component is unresponsive (likely z-index issue). Drag-and-drop works fine
 - **Large file upload (RAW >4.5MB):** Current upload goes through Next.js API route which has body size limits. Needs direct-to-Supabase upload with signed URLs for large RAW files
 - **Gallery password verification:** Hash stored but client-side verification not fully wired
+- **Preset name not shown:** XMP preset uploads don't display the preset name (e.g. "Wedding") in the UI — parser extracts it from `<crs:Name>` but frontend doesn't display it
 
 ### Next Session Priorities
-1. **FIX: Style profile isolation per photographer:** Currently the AI engine may apply the same/default style regardless of which photographer is logged in. Each photographer's trained style profile MUST be scoped by `photographer_id`. The processing pipeline needs to: look up the photographer's selected style profile → only use that profile's learned settings → never cross-contaminate between accounts. Check the orchestrator's style profile lookup and ensure it filters by photographer_id
-2. **FIX: AI editing quality is not good enough for professional photography:** Current Phase 1 (histogram matching + white balance shift) produces mediocre results — not professional standard. Needs significant improvement. The approach should be **preset as baseline + learning on top:**
-   - **Lightroom preset import:** Photographers upload `.xmp` or `.lrtemplate` presets, we parse the XML to extract exact editing parameters (exposure, contrast, highlights, shadows, tone curve points, HSL shifts, split toning, sharpening — ~50-80 values). Apply these as the starting point — gets 80% of the way instantly
-   - **Reference image learning on top of preset:** AI compares "preset applied to various scenes" vs "how the photographer actually edited those scenes in their reference set" and learns the per-scene adjustments they make ON TOP of the preset (e.g. more exposure on backlit portraits, warmer tones at golden hour, crushed blacks on moody indoor). Phase 0's scene classification (portrait/landscape/ceremony/reception) enables scene-specific adjustment learning
-   - **Continuous improvement:** As more shoots are processed and the photographer approves/tweaks results, the model keeps refining its understanding of their style per scene type
-   - **Fallback for no preset:** If photographer only uploads reference images (no preset), fall back to improved histogram/tone curve learning — but still needs to be much better than current approach. Options: luminance-preserving colour transfer, tone curve extraction, HSL channel matching, shadow/highlight rolloff learning
-   - **This is THE critical differentiator** — Imagen doesn't accept presets, Aftershoot accepts presets but doesn't learn on top of them. We do both
-3. **Signed upload URLs for large files (RAW + training images):** New `/api/upload-url` route generates Supabase Storage signed upload URLs via service role. Frontend uploads directly to Supabase (no 4.5MB Vercel limit). Update `photo-upload.tsx` and `style-upload.tsx` to use direct upload. Supabase Storage limit is 100MB/file
-4. **Job stays uploadable until sent to gallery:** Currently after uploading 1 photo to a job, it disappears from the job picker in the Auto Editor upload tab. The job needs to remain selectable for uploads until the photographer clicks "Send to Gallery". Likely the `getUploadableJobs` query filters out jobs that already have photos or a gallery — needs to include jobs with status `editing` / `ready_for_review` as still uploadable
-5. **"Upload More" button on Review Workspace:** If the photographer isn't happy with some photos, they need to be able to upload additional photos from the review page to meet the package amount. Add an upload button/area on the review workspace that uploads to the same gallery/job
-6. **Enforce package image limits on upload:** The upload tab needs to know the job's `included_images` count from its package. Block uploads if the total (existing + new) exceeds the package limit. Show a warning if uploading fewer than the package amount but still allow proceeding. Display a counter like "12 / 50 images". This limit applies across multiple upload sessions (check existing photo count in gallery)
-7. **GPU phases (2 & 3) — skin retouching + scene cleanup:** Integrate real models for Phase 2 (SAM 2 + face restoration) and Phase 3 (inpainting). Host on Modal or Replicate for GPU inference
-8. **Wire remaining email templates:** Booking confirmation, invoice sent, contract signing — templates exist, just need triggering
-9. **Stripe payment integration:** Invoicing, deposits, print orders
-10. **Client-facing quote page:** View packages, add extras, accept/decline
-11. **Fix click-to-browse button** in upload component (z-index issue)
+1. **GPU neural style transfer via Modal (THE priority):** Build Modal endpoints for 3D LUT prediction. This is the only approach that will produce professional-quality results:
+   - Modal account setup + API tokens in env vars
+   - 3D LUT predictor: lightweight CNN predicts image-adaptive LUT weights from downsampled input (~600K params, <2ms apply time per 4K image)
+   - Training endpoint: learns from before/after pairs (photographer's Lightroom exports)
+   - Inference endpoint: applies learned style via generated LUT
+   - Wire into orchestrator Phase 1, replacing current CPU preset application
+   - Frontend: before/after pair upload UI for style training
+2. **FIX: Style profile isolation per photographer:** Each photographer's trained style profile MUST be scoped by `photographer_id`. The processing pipeline needs to: look up the photographer's selected style profile → only use that profile's learned settings → never cross-contaminate between accounts
+3. **Signed upload URLs for large files (RAW + training images):** New `/api/upload-url` route generates Supabase Storage signed upload URLs via service role. Frontend uploads directly to Supabase (no 4.5MB Vercel limit)
+4. **Job stays uploadable until sent to gallery:** Job needs to remain selectable for uploads until photographer clicks "Send to Gallery"
+5. **"Upload More" button on Review Workspace:** Upload additional photos from review page to meet package amount
+6. **Enforce package image limits on upload:** Counter like "12 / 50 images", block if exceeds package limit
+7. **Wire remaining email templates:** Booking confirmation, invoice sent, contract signing
+8. **Stripe payment integration:** Invoicing, deposits, print orders
+9. **Client-facing quote page:** View packages, add extras, accept/decline
+10. **Fix click-to-browse button** in upload component (z-index issue)
+
+### TODO — UI/UX Fixes (17 Feb 2026)
+1. **Galleries page restructure:** Re-order tabs to: Ready → Delivered → All. Remove the Processing tab entirely (not needed). Currently delivered galleries clutter the Ready view — they need to be separated so the photographer only sees galleries awaiting action on the first page
+2. **Multiple uploads must merge into one review:** Currently uploading photos multiple times to the same job creates separate review entries. All uploads for a job must consolidate into a single "Ready for Review" entry. When photographer clicks "Send to Gallery", all images go as one batch
+3. **Empty review cleanup:** If all images in a "Ready for Review" entry have been rejected and none remain, the review entry should be automatically deleted. Combined with #2 above — all uploads feed into one review per job, and send to gallery sends everything as one
+4. **Gallery tiles showing 0 photos / no preview:** Gallery cards on the Galleries page display "0 photos" even when photos exist, and show no thumbnail preview. Likely the photo count query or the cover image lookup is broken — check the gallery list query joins
+5. **Per-gallery settings & client-facing name:** Clicking into a gallery needs editable settings: gallery name, description, date, cover image, expiry, access type. On the client-facing gallery page, the title should show the **gallery name** (not the job title). Gallery name should default to the job title on creation but be independently editable

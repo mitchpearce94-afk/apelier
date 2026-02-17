@@ -290,7 +290,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
             >
               {selectedJob ? (
                 <div className="flex items-center gap-2 min-w-0">
-                  <Camera className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                  <Camera className="w-4 h-4 text-amber-400 flex-shrink-0" />
                   <div className="min-w-0">
                     <span className="text-slate-200 truncate block">
                       {selectedJob.job_number ? `#${String(selectedJob.job_number).padStart(4, '0')} — ` : ''}
@@ -330,7 +330,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                         }
                       }}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${
-                        selectedJob?.id === job.id ? 'bg-indigo-500/10' : ''
+                        selectedJob?.id === job.id ? 'bg-amber-500/10' : ''
                       }`}
                     >
                       <Camera className="w-4 h-4 text-slate-600 flex-shrink-0" />
@@ -341,7 +341,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                         </p>
                         <p className="text-[10px] text-slate-500">{clientName}{job.date ? ` · ${job.date}` : ''}</p>
                       </div>
-                      {selectedJob?.id === job.id && <Check className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />}
+                      {selectedJob?.id === job.id && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
                     </button>
                   );
                 })}
@@ -446,7 +446,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
           onClick={() => !uploading && fileInputRef.current?.click()}
           className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${
             dragOver
-              ? 'border-indigo-500 bg-indigo-500/5'
+              ? 'border-amber-500 bg-amber-500/5'
               : files.length > 0
               ? 'border-white/[0.08] bg-white/[0.02]'
               : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.03]'
@@ -463,8 +463,8 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
 
           {files.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-4">
-                <Upload className="w-6 h-6 text-indigo-400" />
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4">
+                <Upload className="w-6 h-6 text-amber-400" />
               </div>
               <p className="text-sm font-medium text-slate-200 mb-1">Drag & drop your photos here</p>
               <p className="text-xs text-slate-500 mb-3">or click to browse files</p>
@@ -506,7 +506,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                 {files.map((f) => (
                   <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/[0.02] group">
                     <ImageIcon className={`w-3.5 h-3.5 flex-shrink-0 ${
-                      f.status === 'complete' ? 'text-emerald-400' : f.status === 'error' ? 'text-red-400' : f.status === 'uploading' ? 'text-indigo-400' : 'text-slate-600'
+                      f.status === 'complete' ? 'text-emerald-400' : f.status === 'error' ? 'text-red-400' : f.status === 'uploading' ? 'text-amber-400' : 'text-slate-600'
                     }`} />
                     <span className="text-[11px] text-slate-300 truncate flex-1 min-w-0">{f.file.name}</span>
                     <span className="text-[10px] text-slate-600 flex-shrink-0">{formatFileSize(f.file.size)}</span>
@@ -514,7 +514,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                     {f.status === 'error' && (
                       <span className="text-[10px] text-red-400 flex-shrink-0" title={f.error}><AlertCircle className="w-3 h-3" /></span>
                     )}
-                    {f.status === 'uploading' && <Loader2 className="w-3 h-3 text-indigo-400 animate-spin flex-shrink-0" />}
+                    {f.status === 'uploading' && <Loader2 className="w-3 h-3 text-amber-400 animate-spin flex-shrink-0" />}
                     {f.status === 'pending' && !uploading && (
                       <button onClick={() => removeFile(f.id)} className="p-0.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
                         <X className="w-3 h-3" />
@@ -526,7 +526,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
 
               {!uploading && !uploadComplete && (
                 <div className="flex items-center justify-center pt-3 border-t border-white/[0.04] mt-3">
-                  <button className="text-xs text-indigo-400 hover:text-indigo-300 font-medium">
+                  <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">
                     + Add more files
                   </button>
                 </div>
@@ -538,16 +538,16 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
 
       {/* Upload progress summary */}
       {uploading && (
-        <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
           <div className="flex items-center gap-2 mb-2">
-            <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-            <span className="text-xs font-medium text-indigo-300">
+            <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+            <span className="text-xs font-medium text-amber-300">
               Uploading {completedCount} of {files.length}...
             </span>
           </div>
-          <div className="h-1.5 bg-indigo-500/10 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-amber-500/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+              className="h-full bg-amber-500 rounded-full transition-all duration-300"
               style={{ width: `${files.length > 0 ? (completedCount / files.length) * 100 : 0}%` }}
             />
           </div>
@@ -571,10 +571,10 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
           {/* AI Processing status */}
           {processingTriggered && !processingError && (
             <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 flex items-start gap-2">
-              <Wand2 className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
+              <Wand2 className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs text-indigo-300 font-medium">AI processing started</p>
-                <p className="text-[11px] text-indigo-400/60 mt-0.5">
+                <p className="text-[11px] text-amber-400/60 mt-0.5">
                   {selectedStyleId ? 'Applying your style profile and processing all phases.' : 'Processing without style — analysis, composition, and output generation.'}
                   {' '}Check the Processing Queue tab for live progress.
                 </p>

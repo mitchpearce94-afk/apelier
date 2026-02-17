@@ -259,8 +259,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This time slot is no longer available.' }, { status: 409 });
     }
 
-    // 6. TODO: Send booking confirmation email (when Resend is configured)
-    // await fetch(`${request.nextUrl.origin}/api/email`, { ... });
+    // 6. Send booking confirmation email
+    try {
+      const { data: photographer } = await sb
+        .from('photographers')
+        .select('name, business_name, brand_settings')
+        .eq('id', photographerId)
+        .single();
+
+      if (photographer) {
+        await fetch(`${request.nextUrl.origin}/api/email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template: 'booking_confirmation',
+            to: email,
+            data: {
+              clientName: name.split(' ')[0],
+              jobTitle: event.title || 'Photography Session',
+              jobDate: slot.date ? new Date(slot.date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '',
+              jobTime: slot.start_time || '',
+              location: event.location || '',
+              photographerName: photographer.name || '',
+              businessName: photographer.business_name || '',
+              brandColor: photographer.brand_settings?.primary_color || '#b8860b',
+            },
+          }),
+        });
+      }
+    } catch (emailErr) {
+      console.error('Failed to send booking confirmation email:', emailErr);
+      // Don't fail the booking if email fails
+    }
 
     return NextResponse.json({
       success: true,

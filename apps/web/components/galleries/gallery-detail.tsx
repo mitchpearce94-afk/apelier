@@ -4,16 +4,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDate } from '@/lib/utils';
-import { getPhotos, deliverGallery, getCurrentPhotographer, hydratePhotoUrls, type PhotoWithUrls } from '@/lib/queries';
+import { getPhotos, deliverGallery, updateGallery, getCurrentPhotographer, hydratePhotoUrls } from '@/lib/queries';
 import { sendGalleryDeliveryEmail } from '@/lib/email';
-import { generateMockGalleryPhotos } from './mock-data';
-import type { Gallery, Photo } from '@/lib/types';
+import type { Gallery, Photo, GalleryAccessType } from '@/lib/types';
 import {
   ArrowLeft, Eye, Share2, Copy, Check, ExternalLink,
   Camera, Heart, Download, Lock, Globe, Mail, Star,
   Calendar, ImageIcon, Link2, Loader2,
   X, ChevronLeft, ChevronRight, ZoomIn,
-  Send, AlertCircle,
+  Send, Settings, Save, Pencil,
 } from 'lucide-react';
 
 interface GalleryDetailProps {
@@ -48,8 +47,8 @@ function PhotoLightbox({ photo, photos, onClose, onPrev, onNext }: {
         <ChevronRight className="w-8 h-8" />
       </button>
       <div className="max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-        {((photo as any).web_url || (photo as any).edited_url || (photo as any).preview_url) ? (
-          <img src={(photo as any).web_url || (photo as any).edited_url || (photo as any).preview_url} alt={photo.filename} className="max-w-full max-h-[85vh] rounded-lg object-contain" />
+        {((photo as any).web_url || (photo as any).edited_url) ? (
+          <img src={(photo as any).web_url || (photo as any).edited_url} alt={photo.filename} className="max-w-full max-h-[85vh] rounded-lg object-contain" />
         ) : (
           <div className="w-[800px] h-[533px] bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center">
             <div className="text-center">
@@ -78,7 +77,26 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [delivering, setDelivering] = useState(false);
   const [showDeliverConfirm, setShowDeliverConfirm] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
-  const [useMockPhotos, setUseMockPhotos] = useState(false);
+
+  // Per-gallery settings state
+  const [showSettings, setShowSettings] = useState(false);
+  const [editTitle, setEditTitle] = useState(gallery.title);
+  const [editDescription, setEditDescription] = useState(gallery.description || '');
+  const [editAccessType, setEditAccessType] = useState<GalleryAccessType>(gallery.access_type);
+  const [editExpiryDays, setEditExpiryDays] = useState<string>(() => {
+    if (!gallery.expires_at) return 'none';
+    const days = Math.round((new Date(gallery.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (days <= 7) return '7';
+    if (days <= 14) return '14';
+    if (days <= 30) return '30';
+    if (days <= 60) return '60';
+    if (days <= 90) return '90';
+    return 'none';
+  });
+  const [editDownloadFullRes, setEditDownloadFullRes] = useState(gallery.download_permissions?.allow_full_res ?? true);
+  const [editDownloadWeb, setEditDownloadWeb] = useState(gallery.download_permissions?.allow_web ?? true);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
   const [galleryPassword, setGalleryPassword] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
@@ -96,23 +114,47 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
         if (data.length > 0) {
           const hydrated = await hydratePhotoUrls(data);
           setPhotos(hydrated);
-        } else {
-          setUseMockPhotos(true);
-          setPhotos(generateMockGalleryPhotos(gallery.photo_count || 24));
         }
-      } catch {
-        setUseMockPhotos(true);
-        setPhotos(generateMockGalleryPhotos(gallery.photo_count || 24));
+      } catch (err) {
+        console.error('Error loading photos:', err);
       }
       setLoading(false);
     }
     loadPhotos();
-  }, [gallery.id, gallery.photo_count]);
+  }, [gallery.id]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(galleryUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    const expiresAt = editExpiryDays === 'none'
+      ? null
+      : new Date(Date.now() + parseInt(editExpiryDays) * 24 * 60 * 60 * 1000).toISOString();
+
+    const updated = await updateGallery(gallery.id, {
+      title: editTitle.trim() || gallery.title,
+      description: editDescription.trim() || undefined,
+      access_type: editAccessType,
+      expires_at: expiresAt || undefined,
+      download_permissions: {
+        allow_full_res: editDownloadFullRes,
+        allow_web: editDownloadWeb,
+        allow_favorites_only: gallery.download_permissions?.allow_favorites_only ?? false,
+      },
+    });
+
+    if (updated) {
+      const merged = { ...gallery, ...updated };
+      setGallery(merged);
+      onUpdate?.(merged);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2000);
+    }
+    setSettingsSaving(false);
   };
 
   const handleDeliver = async () => {
@@ -122,23 +164,19 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       setGallery({ ...gallery, ...delivered, status: 'delivered' });
       onUpdate?.({ ...gallery, ...delivered, status: 'delivered' });
 
-      // Update the job status to 'delivered' via server API (bypasses RLS)
       const jobId = (gallery as any).job_id || (delivered as any).job_id;
       if (jobId) {
         try {
-          const jobRes = await fetch('/api/processing-jobs', {
+          await fetch('/api/processing-jobs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'update_job_status', target_job_id: jobId, status: 'delivered' }),
           });
-          const jobResult = await jobRes.json();
-          console.log('[DeliverGallery] job status update:', jobRes.status, jobResult);
         } catch (err) {
           console.error('[DeliverGallery] job status update failed:', err);
         }
       }
 
-      // Send delivery email
       const clientEmail = (delivered as any)?.client?.email || (gallery as any)?.client?.email;
       if (clientEmail && clientName) {
         try {
@@ -215,6 +253,9 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
               <Button size="sm" variant="secondary" onClick={() => window.open(galleryUrl, '_blank')}>
                 <ExternalLink className="w-3 h-3" />Preview
               </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowSettings(!showSettings)}>
+                <Settings className="w-3 h-3" />{showSettings ? 'Hide Settings' : 'Settings'}
+              </Button>
             </>
           ) : gallery.status === 'processing' ? (
             <Button size="sm" variant="ghost" disabled>
@@ -227,16 +268,16 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       {/* Stats row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {[
-          { label: 'Photos', value: photos.length, icon: ImageIcon, color: 'indigo' },
+          { label: 'Photos', value: photos.length, icon: ImageIcon, color: 'amber' },
           { label: 'Views', value: gallery.view_count, icon: Eye, color: 'violet' },
           { label: 'Favourites', value: favoriteCount, icon: Heart, color: 'pink' },
           { label: 'Downloads', value: 0, icon: Download, color: 'emerald' },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-3 sm:p-4">
             <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center mb-2"
-              style={{ backgroundColor: stat.color === 'indigo' ? 'rgba(99,102,241,0.1)' : stat.color === 'violet' ? 'rgba(139,92,246,0.1)' : stat.color === 'pink' ? 'rgba(236,72,153,0.1)' : 'rgba(16,185,129,0.1)' }}>
+              style={{ backgroundColor: stat.color === 'amber' ? 'rgba(245,158,11,0.1)' : stat.color === 'violet' ? 'rgba(139,92,246,0.1)' : stat.color === 'pink' ? 'rgba(236,72,153,0.1)' : 'rgba(16,185,129,0.1)' }}>
               <stat.icon className="w-3.5 h-3.5 sm:w-4 sm:h-4"
-                style={{ color: stat.color === 'indigo' ? '#818cf8' : stat.color === 'violet' ? '#a78bfa' : stat.color === 'pink' ? '#f472b6' : '#34d399' }} />
+                style={{ color: stat.color === 'amber' ? '#f59e0b' : stat.color === 'violet' ? '#a78bfa' : stat.color === 'pink' ? '#f472b6' : '#34d399' }} />
             </div>
             <p className="text-[10px] sm:text-xs text-slate-500">{stat.label}</p>
             <p className="text-lg sm:text-xl font-bold text-white">{stat.value}</p>
@@ -244,47 +285,104 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
         ))}
       </div>
 
-      {/* Gallery info bar (read-only — settings controlled globally in Settings page) */}
-      {(gallery.status === 'delivered' || gallery.status === 'ready') && (
-        <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-3 sm:p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-              <AccessIcon className="w-4 h-4 text-indigo-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-slate-500 mb-0.5">Gallery Link</p>
-              <p className="text-xs text-slate-300 truncate font-mono">{galleryUrl}</p>
-            </div>
-            <Button size="sm" variant="secondary" onClick={copyLink} className="flex-shrink-0">
-              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
-            </Button>
+      {/* Per-gallery settings panel */}
+      {showSettings && (
+        <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4 sm:p-5 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Pencil className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-semibold text-white">Gallery Settings</h3>
           </div>
-          <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
-            <span className="flex items-center gap-1 capitalize">
-              <AccessIcon className="w-2.5 h-2.5" />{gallery.access_type} access
-            </span>
-            {gallery.expires_at && (
-              <span className="flex items-center gap-1">
-                <Calendar className="w-2.5 h-2.5" />Expires {formatDate(gallery.expires_at, 'short')}
-              </span>
-            )}
-            {gallery.download_permissions.allow_full_res && (
-              <span className="flex items-center gap-1">
-                <Download className="w-2.5 h-2.5" />Full-res downloads
-              </span>
-            )}
-            {gallery.download_permissions.allow_web && (
-              <span className="flex items-center gap-1">
-                <Download className="w-2.5 h-2.5" />Web downloads
-              </span>
-            )}
-          </div>
-          <p className="text-[10px] text-slate-600 mt-2">Gallery settings are managed globally in Settings → Branding → Gallery Settings.</p>
 
-          {/* Per-gallery password setting */}
-          {gallery.access_type === 'password' && (
-            <div className="mt-3 pt-3 border-t border-white/[0.06]">
+          {/* Gallery name */}
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1.5">Gallery Name</label>
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              placeholder="e.g. Sarah & James | 14.02.2026"
+              className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            />
+            <p className="text-[10px] text-slate-600 mt-1">This is what the client sees as the gallery title.</p>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1.5">Description</label>
+            <textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={2}
+              placeholder="A short message for the client..."
+              className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50 resize-none"
+            />
+          </div>
+
+          {/* Access type + Expiry row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1.5">Access Type</label>
+              <div className="flex gap-2">
+                {(['public', 'password', 'email', 'private'] as GalleryAccessType[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setEditAccessType(t)}
+                    className={`flex-1 px-2 py-1.5 text-[11px] rounded-lg border transition-all capitalize ${
+                      editAccessType === t
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                        : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1.5">Expiry</label>
+              <select
+                value={editExpiryDays}
+                onChange={(e) => setEditExpiryDays(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+              >
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+                <option value="none">No expiry</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Download permissions */}
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1.5">Download Permissions</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editDownloadFullRes}
+                  onChange={(e) => setEditDownloadFullRes(e.target.checked)}
+                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                />
+                <span className="text-xs text-slate-300">Full resolution</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editDownloadWeb}
+                  onChange={(e) => setEditDownloadWeb(e.target.checked)}
+                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                />
+                <span className="text-xs text-slate-300">Web resolution</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Password (when access type is password) */}
+          {editAccessType === 'password' && (
+            <div>
               <label className="text-[11px] text-slate-400 block mb-1.5">Gallery Password</label>
               <div className="flex gap-2">
                 <input
@@ -292,7 +390,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                   value={galleryPassword}
                   onChange={(e) => { setGalleryPassword(e.target.value); setPasswordSaved(false); }}
                   placeholder="Set a password for this gallery"
-                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
                 />
                 <Button
                   size="sm"
@@ -318,19 +416,57 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                   }}
                 >
                   {passwordSaved ? <Check className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                  <span className="hidden sm:inline">{passwordSaving ? 'Saving...' : passwordSaved ? 'Saved!' : 'Set'}</span>
+                  {passwordSaving ? 'Saving...' : passwordSaved ? 'Saved!' : 'Set'}
                 </Button>
               </div>
               <p className="text-[10px] text-slate-600 mt-1">Share this password with your client so they can access their gallery.</p>
             </div>
           )}
+
+          {/* Save button */}
+          <div className="flex items-center gap-2 pt-2">
+            <Button size="sm" onClick={handleSaveSettings} disabled={settingsSaving}>
+              {settingsSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : settingsSaved ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
+              {settingsSaving ? 'Saving...' : settingsSaved ? 'Saved!' : 'Save Settings'}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowSettings(false)}>
+              Close
+            </Button>
+          </div>
         </div>
       )}
 
-      {useMockPhotos && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>Showing demo photos — real photos will appear once uploaded via Auto Editor.</span>
+      {/* Gallery link bar */}
+      {!showSettings && (gallery.status === 'delivered' || gallery.status === 'ready') && (
+        <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-3 sm:p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <AccessIcon className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] text-slate-500 mb-0.5">Gallery Link</p>
+              <p className="text-xs text-slate-300 truncate font-mono">{galleryUrl}</p>
+            </div>
+            <Button size="sm" variant="secondary" onClick={copyLink} className="flex-shrink-0">
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
+            </Button>
+          </div>
+          <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
+            <span className="flex items-center gap-1 capitalize">
+              <AccessIcon className="w-2.5 h-2.5" />{gallery.access_type} access
+            </span>
+            {gallery.expires_at && (
+              <span className="flex items-center gap-1">
+                <Calendar className="w-2.5 h-2.5" />Expires {formatDate(gallery.expires_at, 'short')}
+              </span>
+            )}
+            {gallery.download_permissions?.allow_full_res && (
+              <span className="flex items-center gap-1">
+                <Download className="w-2.5 h-2.5" />Full-res
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -342,7 +478,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             onClick={() => setActiveSection(s)}
             className={`px-3 py-1.5 text-[11px] rounded-full whitespace-nowrap border transition-all ${
               activeSection === s
-                ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300'
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                 : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
             }`}
           >
@@ -354,12 +490,18 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       {/* Photo grid */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+        </div>
+      ) : photos.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Camera className="w-10 h-10 text-slate-700 mb-3" />
+          <p className="text-sm text-slate-400">No photos in this gallery yet</p>
+          <p className="text-xs text-slate-600 mt-1">Photos will appear here once sent from Auto Editor.</p>
         </div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1.5 sm:gap-2">
           {filtered.map((photo) => {
-            const thumbUrl = (photo as any).thumb_url || (photo as any).web_url || (photo as any).preview_url;
+            const thumbUrl = (photo as any).thumb_url || (photo as any).web_url || (photo as any).edited_url;
             return (
             <div
               key={photo.id}
@@ -395,7 +537,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
         </div>
       )}
 
-      {/* Bottom bar */}
+      {/* Bottom bar — Deliver */}
       {gallery.status === 'ready' && (
         <div className="fixed bottom-0 left-0 right-0 z-40 px-3 lg:pl-[264px] lg:px-6 pb-3 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
           <div className="pointer-events-auto">
