@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getProcessingJobs, deleteProcessingJob } from '@/lib/queries';
@@ -22,7 +22,7 @@ type TabId = 'upload' | 'queue' | 'review';
 // How long a job can be stuck with no progress before auto-failing (ms)
 const STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-export default function EditingPage() {
+function EditingPageInner() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabId) || 'upload';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
@@ -265,5 +265,17 @@ export default function EditingPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EditingPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+      </div>
+    }>
+      <EditingPageInner />
+    </Suspense>
   );
 }
