@@ -303,7 +303,6 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                   // Send gallery back to review — reset gallery status and create a new processing job
                   const updated = await updateGallery(gallery.id, { status: 'processing' as any });
                   if (updated) {
-                    // Update job status back to ready_for_review
                     const jobId = (gallery as any).job_id;
                     if (jobId) {
                       try {
@@ -316,7 +315,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                         console.error('Failed to send back to review:', err);
                       }
                     }
-                    onBack();
+                    // Redirect straight to the Auto Editor review tab
+                    window.location.href = '/editing?tab=review';
                   }
                 }}>
                   <ArrowLeft className="w-3 h-3" />Back to Review

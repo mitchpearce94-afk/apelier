@@ -180,17 +180,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing gallery_id' }, { status: 400 });
       }
 
-      // 1. Set gallery status back to 'ready' (so it appears in review)
-      await supabaseAdmin
-        .from('galleries')
-        .update({ status: 'ready', updated_at: new Date().toISOString() })
-        .eq('id', gallery_id);
+      // 1. Gallery status already set to 'processing' by the client — don't change it
+      //    This ensures it disappears from the Galleries page
 
-      // 2. Set job status back to 'ready_for_review'
+      // 2. Set job status back to editing
       if (targetJobId) {
         await supabaseAdmin
           .from('jobs')
-          .update({ status: 'ready_for_review' })
+          .update({ status: 'editing' })
           .eq('id', targetJobId);
       }
 

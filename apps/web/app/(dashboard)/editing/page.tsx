@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getProcessingJobs, deleteProcessingJob } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
@@ -22,7 +23,9 @@ type TabId = 'upload' | 'queue' | 'review';
 const STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export default function EditingPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('upload');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') as TabId) || 'upload';
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingJob, setReviewingJob] = useState<ProcessingJobWithGallery | null>(null);
