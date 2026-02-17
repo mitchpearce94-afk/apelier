@@ -72,7 +72,7 @@ export default function InvoicesPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<InvoiceStatus | 'all'>('all');
+  const [filter, setFilter] = useState<InvoiceStatus | 'all' | 'outstanding'>('outstanding');
   const [photographerId, setPhotographerId] = useState<string | null>(null);
   const [photographer, setPhotographer] = useState<Photographer | null>(null);
   const [packages, setPackages] = useState<PackageItem[]>([]);
@@ -372,7 +372,9 @@ export default function InvoicesPage() {
     .filter((i) => i.status === 'paid')
     .reduce((sum, i) => sum + Number(i.paid_amount || 0), 0);
 
-  const filtered = filter === 'all' ? invoices : invoices.filter((i) => i.status === filter);
+  const filtered = filter === 'all' ? invoices
+    : filter === 'outstanding' ? invoices.filter((i) => ['draft', 'sent', 'viewed', 'partially_paid', 'overdue'].includes(i.status))
+    : invoices.filter((i) => i.status === filter);
 
   // Jobs with package amounts that don't already have both invoices
   const invoicableJobs = jobs.filter((j) => {
@@ -439,7 +441,7 @@ export default function InvoicesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -473,20 +475,20 @@ export default function InvoicesPage() {
         <>
           <div className="flex items-center gap-1 border-b border-white/[0.06] -mb-[1px]">
             {[
-              { label: 'All', value: 'all' as const },
-              { label: 'Draft', value: 'draft' as const },
-              { label: 'Sent', value: 'sent' as const },
-              { label: 'Overdue', value: 'overdue' as const },
+              { label: 'Outstanding', value: 'outstanding' as const },
               { label: 'Paid', value: 'paid' as const },
+              { label: 'All', value: 'all' as const },
             ].map((tab) => {
-              const count = tab.value === 'all' ? invoices.length : invoices.filter((i) => i.status === tab.value).length;
+              const count = tab.value === 'all' ? invoices.length
+                : tab.value === 'outstanding' ? invoices.filter((i) => ['draft', 'sent', 'viewed', 'partially_paid', 'overdue'].includes(i.status)).length
+                : invoices.filter((i) => i.status === 'paid').length;
               return (
                 <button
                   key={tab.value}
-                  onClick={() => setFilter(tab.value)}
+                  onClick={() => setFilter(tab.value as any)}
                   className={cn(
                     'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
-                    filter === tab.value ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'
+                    filter === tab.value ? 'border-amber-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'
                   )}
                 >
                   {tab.label}<span className="ml-1.5 text-xs text-slate-600">({count})</span>

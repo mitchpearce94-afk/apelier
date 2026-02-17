@@ -1,7 +1,7 @@
 # Apelier — Master Document
 
-**Version:** 3.7  
-**Last Updated:** 17 February 2026 (Preset application bug fixed — catastrophic `*100` multiplier on exposure/highlights/shadows causing destroyed images. Cost model verified against Modal pricing. Investor pitch deck with correct unit economics. Histogram matching + preset both disabled pending GPU neural approach.)  
+**Version:** 3.8  
+**Last Updated:** 18 February 2026 (Gallery bug fixes — duplicate gallery prevention, photo counts, cover images, per-gallery settings, tab reorder, empty review cleanup, booking email wired, indigo→gold rebrand)  
 **Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
 **GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
 **Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
@@ -273,7 +273,7 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
 - **Workflows:** UI only, email templates exist but workflow triggers not wired to automatic scheduling
 - **Analytics:** Uses Supabase data but some mock calculations
 - **Branding:** Logo upload is local preview only (needs file storage)
-- **Email sending:** Resend API route built, gallery delivery email wired, but requires `RESEND_API_KEY` env var. Booking/invoice/contract emails have templates but aren't wired to their respective flows yet
+- **Email sending:** Resend API route built. Gallery delivery, booking confirmation, contract signing, and invoice emails all wired to their respective flows. Requires `RESEND_API_KEY` env var to actually send (dev mode logs to console)
 - **Gallery password verification:** Password hash stored but actual verification on client-facing page not fully implemented
 
 ### ❌ Not Yet Built
@@ -857,6 +857,21 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 8. **Stripe payment integration:** Invoicing, deposits, print orders
 9. **Client-facing quote page:** View packages, add extras, accept/decline
 10. **Fix click-to-browse button** in upload component (z-index issue)
+
+### Session: 18 Feb 2026 — Gallery Fixes, Branding, Email Wiring
+- **FIX #3 — Duplicate galleries per job:** `createGalleryForJob()` now checks `getGalleryForJob()` first and returns existing gallery if one exists. Also auto-generates a URL-safe slug on creation
+- **FIX #1 — Gallery photo count:** `getGalleries()` now joins photos table, computes active (non-culled) photo count, and returns it as `photo_count`
+- **FIX #2 — Gallery cover image:** `getGalleries()` extracts first photo's `thumb_key`, batch-signs URLs, and returns `cover_thumb_url`. Gallery cards display real cover photos instead of Camera icon
+- **FIX #4 — Old branding URLs:** Email from-address fallback updated from `noreply@aperturesuite.com` to `noreply@apelier.com.au`
+- **FIX #5 — Gallery tab reorder:** Tabs changed from `[all, ready, delivered, processing]` to `[ready, delivered, all]`. Processing tab removed entirely. Default view is now "Ready" so photographer sees galleries awaiting action first
+- **FIX #6 — Per-gallery editable settings:** Gallery detail now has a collapsible Settings panel with: editable gallery name (what client sees), description, access type selector (public/password/email/private), expiry dropdown (7/14/30/60/90 days/none), download permissions (full-res/web checkboxes), password field (when access type is password). All saved via `updateGallery()`. Removed "Gallery settings are managed globally" text
+- **FIX #7 — Empty review cleanup:** When all photos in a review entry are rejected/culled, the processing job is auto-deleted and user navigates back to editing page
+- **FIX #14 — Booking confirmation email wired:** `/api/book` route now sends booking confirmation email via Resend after successful booking, with photographer's branding
+- **FIX #10 — Click-to-browse button:** "Add more files" button in upload component now properly triggers `fileInputRef.current?.click()` with `e.stopPropagation()`
+- **Indigo → Gold rebrand:** Galleries page, gallery detail, photo upload component, upload progress bar, email brand color defaults all updated from indigo (#6366f1) to gold/amber (#b8860b). Spinners, filter tabs, focus rings, active states all use amber-500
+- **Mock data removed:** Galleries page no longer falls back to mock data. Shows empty state when no galleries exist
+- **Gallery list refreshes:** Returning from gallery detail view re-fetches gallery data so counts/status are current
+- **Gallery type updated:** Added `cover_thumb_key` and `cover_thumb_url` optional fields
 
 ### TODO — UI/UX Fixes (17 Feb 2026)
 1. **Galleries page restructure:** Re-order tabs to: Ready → Delivered → All. Remove the Processing tab entirely (not needed). Currently delivered galleries clutter the Ready view — they need to be separated so the photographer only sees galleries awaiting action on the first page

@@ -78,6 +78,9 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [showDeliverConfirm, setShowDeliverConfirm] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
 
+  const [showDeliverSuccess, setShowDeliverSuccess] = useState(false);
+  const [deliverSuccessMessage, setDeliverSuccessMessage] = useState('');
+
   // Per-gallery settings state
   const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(gallery.title);
@@ -157,6 +160,19 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
     setSettingsSaving(false);
   };
 
+  const cuteMessages = [
+    "Your client is going to love these! 📸",
+    "Another gallery delivered — you're on fire! 🔥",
+    "Photos sent! Time for a coffee break ☕",
+    "Gallery away! Your client's inbox just got prettier ✨",
+    "Delivered! Now sit back and wait for the 'OMG I LOVE THEM' text 💬",
+    "Gallery sent! You absolute legend 🎉",
+    "Photos are on their way — prepare for happy tears! 🥹",
+    "Another happy client incoming! Gallery delivered 💛",
+    "Boom! Gallery delivered. Nailed it as always 🎯",
+    "Gallery's live! Your client is about to have the best day 🌟",
+  ];
+
   const handleDeliver = async () => {
     setDelivering(true);
     const delivered = await deliverGallery(gallery.id);
@@ -196,6 +212,18 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
           console.error('Failed to send delivery email:', e);
         }
       }
+
+      // Show success popup
+      setDeliverSuccessMessage(cuteMessages[Math.floor(Math.random() * cuteMessages.length)]);
+      setShowDeliverSuccess(true);
+      setDelivering(false);
+      setShowDeliverConfirm(false);
+
+      // Auto-redirect back to galleries after 2.5 seconds
+      setTimeout(() => {
+        onBack();
+      }, 2500);
+      return;
     }
     setDelivering(false);
     setShowDeliverConfirm(false);
@@ -226,6 +254,20 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
           onPrev={() => goLightbox(-1)}
           onNext={() => goLightbox(1)}
         />
+      )}
+
+      {/* Delivery success popup */}
+      {showDeliverSuccess && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
+          <div className="bg-[#0c0c16] border border-emerald-500/30 rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl shadow-emerald-500/10">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-emerald-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Gallery Delivered!</h3>
+            <p className="text-sm text-slate-400 mb-1">{deliverSuccessMessage}</p>
+            <p className="text-xs text-slate-600 mt-4">Redirecting back to galleries...</p>
+          </div>
+        </div>
       )}
 
       {/* Header */}

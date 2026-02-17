@@ -204,7 +204,7 @@ export default function PublicGalleryPage() {
   const [gridSize, setGridSize] = useState<'small' | 'large'>('large');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
-  const brandColor = brand?.brand_settings?.primary_color || '#6366f1';
+  const brandColor = brand?.brand_settings?.primary_color || '#b8860b';
   const businessName = brand?.business_name || 'Gallery';
 
   useEffect(() => { loadGallery(); }, [slug]);

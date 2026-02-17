@@ -11,7 +11,8 @@ import { Input, Select, Textarea } from '@/components/ui/form-fields';
 import { Combobox } from '@/components/ui/combobox';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
 import { getJobs, getClients, createJob, updateJob, deleteJob, getCurrentPhotographer, getPackages, createInvoice } from '@/lib/queries';
-import { sendInvoiceEmail, sendBookingConfirmationEmail } from '@/lib/email';
+import { generateContract } from '@/lib/contract-queries';
+import { sendInvoiceEmail, sendBookingConfirmationEmail, sendContractSigningEmail } from '@/lib/email';
 import { Briefcase, Plus, Search, MapPin, Calendar as CalendarIcon, Pencil, Trash2, User, DollarSign, MessageSquare, X } from 'lucide-react';
 import type { Job, JobStatus, Client, Photographer } from '@/lib/types';
 
@@ -277,9 +278,31 @@ export default function JobsPage() {
       // Send booking confirmation + invoice emails
       if (photographer) {
         const client = clients.find((c) => c.id === newJob.client_id);
+
+        // Auto-generate contract and send signing email
+        if (newJob.client_id) {
+          try {
+            const contract = await generateContract(newJob.id);
+            if (contract && client?.email) {
+              const signingUrl = `${window.location.origin}/sign/${contract.signing_token}`;
+              sendContractSigningEmail({
+                to: client.email,
+                clientName: [client.first_name, client.last_name].filter(Boolean).join(' '),
+                jobTitle: newJob.title || newJob.job_type || 'Photography Session',
+                signingUrl,
+                photographerName: photographer.name || '',
+                businessName: photographer.business_name || photographer.name || '',
+                brandColor: photographer.brand_settings?.primary_color || '#b8860b',
+              }).catch((err) => console.error('Failed to send contract email:', err));
+            }
+          } catch (err) {
+            console.error('Failed to auto-generate contract:', err);
+          }
+        }
+
         if (client?.email) {
           const clientName = [client.first_name, client.last_name].filter(Boolean).join(' ');
-          const brandColor = photographer.brand_settings?.primary_color || '#6366f1';
+          const brandColor = photographer.brand_settings?.primary_color || '#b8860b';
           const bizName = photographer.business_name || photographer.name || '';
 
           // Booking confirmation email

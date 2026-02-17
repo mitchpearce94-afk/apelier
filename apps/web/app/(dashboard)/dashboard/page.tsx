@@ -13,7 +13,7 @@ import Link from 'next/link';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
-    totalClients: 0, totalLeads: 0, activeLeads: 0, totalJobs: 0,
+    totalClients: 0, totalLeads: 0, activeLeads: 0, openJobs: 0,
     totalRevenue: 0, upcomingJobs: [] as any[],
   });
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
@@ -41,12 +41,12 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
 
-  const isEmpty = stats.totalClients === 0 && stats.activeLeads === 0 && stats.totalJobs === 0;
+  const isEmpty = stats.totalClients === 0 && stats.activeLeads === 0 && stats.openJobs === 0;
 
   return (
     <div className="space-y-6">
@@ -61,7 +61,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Revenue" value={formatCurrency(stats.totalRevenue)} icon={DollarSign} />
         <StatCard title="Active Leads" value={stats.activeLeads} icon={Inbox} />
-        <StatCard title="Total Jobs" value={stats.totalJobs} icon={Briefcase} />
+        <StatCard title="Open Jobs" value={stats.openJobs} icon={Briefcase} />
         <StatCard title="Total Clients" value={stats.totalClients} icon={Users} />
       </div>
 
@@ -74,7 +74,7 @@ export default function DashboardPage() {
               <Calendar className="w-4 h-4 text-slate-500" />
               <h2 className="text-sm font-semibold text-white">Upcoming Shoots</h2>
             </div>
-            <Link href="/jobs" className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+            <Link href="/jobs" className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -104,7 +104,7 @@ export default function DashboardPage() {
               <Inbox className="w-4 h-4 text-slate-500" />
               <h2 className="text-sm font-semibold text-white">Recent Leads</h2>
             </div>
-            <Link href="/leads" className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+            <Link href="/leads" className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>

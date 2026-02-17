@@ -473,6 +473,8 @@ export async function getDashboardStats() {
 
   const activeLeads = (leads.data || []).filter((l: any) => !['lost', 'booked'].includes(l.status)).length;
 
+  const openJobs = (jobs.data || []).filter((j: any) => !['completed', 'canceled'].includes(j.status)).length;
+
   const upcomingJobs = (jobs.data || [])
     .filter((j: any) => j.status === 'upcoming' && j.date)
     .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -482,7 +484,7 @@ export async function getDashboardStats() {
     totalClients: clients.count || 0,
     totalLeads: leads.count || 0,
     activeLeads,
-    totalJobs: jobs.count || 0,
+    openJobs,
     totalRevenue,
     upcomingJobs,
   };
@@ -540,7 +542,35 @@ export async function getProcessingJobs(): Promise<ProcessingJob[]> {
     console.error('Error fetching processing jobs:', error);
     return [];
   }
-  return data || [];
+
+  if (!data || data.length === 0) return [];
+
+  // For completed jobs, check if they have any active (non-culled) photos
+  // If all photos are culled/rejected, auto-delete the processing job
+  const completedJobs = data.filter((j: any) => j.status === 'completed');
+  const jobsToDelete: string[] = [];
+
+  if (completedJobs.length > 0) {
+    for (const job of completedJobs) {
+      const { count } = await sb
+        .from('photos')
+        .select('*', { count: 'exact', head: true })
+        .eq('gallery_id', job.gallery_id)
+        .eq('is_culled', false);
+
+      if (count === 0) {
+        jobsToDelete.push(job.id);
+      }
+    }
+
+    // Delete empty processing jobs
+    if (jobsToDelete.length > 0) {
+      await sb.from('processing_jobs').delete().in('id', jobsToDelete);
+    }
+  }
+
+  // Return filtered list (exclude the ones we just deleted)
+  return (data || []).filter((j: any) => !jobsToDelete.includes(j.id));
 }
 
 export async function deleteProcessingJob(jobId: string): Promise<boolean> {

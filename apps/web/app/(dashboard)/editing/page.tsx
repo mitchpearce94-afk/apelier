@@ -146,7 +146,7 @@ export default function EditingPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -185,11 +185,11 @@ export default function EditingPage() {
               {tab.label}
               {tab.count !== undefined && (
                 <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-medium ${
-                  activeTab === tab.id ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/[0.06] text-slate-500'
+                  activeTab === tab.id ? 'bg-amber-500/20 text-amber-400' : 'bg-white/[0.06] text-slate-500'
                 }`}>{tab.count}</span>
               )}
             </span>
-            {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />}
+            {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-500 rounded-full" />}
           </button>
         ))}
       </div>
@@ -209,7 +209,13 @@ export default function EditingPage() {
               { label: 'Processing', value: processingJobs.filter((j) => j.status === 'processing').length, icon: Loader2, color: 'indigo' },
               { label: 'Queued', value: processingJobs.filter((j) => j.status === 'queued').length, icon: Clock, color: 'slate' },
               { label: 'Completed', value: processingJobs.filter((j) => j.status === 'completed').length, icon: CheckCircle2, color: 'emerald' },
-              { label: 'Total Images', value: processingJobs.reduce((sum, j) => sum + j.total_images, 0), icon: ImageIcon, color: 'violet' },
+              { label: 'Edited This Month', value: processingJobs.filter((j) => {
+                if (j.status !== 'completed') return false;
+                const completedAt = (j as any).completed_at || j.created_at;
+                const now = new Date();
+                const jobDate = new Date(completedAt);
+                return jobDate.getMonth() === now.getMonth() && jobDate.getFullYear() === now.getFullYear();
+              }).reduce((sum, j) => sum + j.total_images, 0), icon: ImageIcon, color: 'violet' },
             ].map((stat) => (
               <div key={stat.label} className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
                 <div className="flex items-center gap-2 mb-2">
