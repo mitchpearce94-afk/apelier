@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getProcessingJobs, deleteProcessingJob } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
@@ -23,15 +22,24 @@ type TabId = 'upload' | 'queue' | 'review';
 const STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 function EditingPageInner() {
-  const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as TabId) || 'upload';
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const [activeTab, setActiveTab] = useState<TabId>('upload');
   const [processingJobs, setProcessingJobs] = useState<ProcessingJobWithGallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewingJob, setReviewingJob] = useState<ProcessingJobWithGallery | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track last known progress per job for stale detection
   const progressSnapshotRef = useRef<Map<string, { processed: number; timestamp: number }>>(new Map());
+
+  // Read ?tab= from URL on mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') as TabId;
+      if (tab && ['upload', 'queue', 'review'].includes(tab)) {
+        setActiveTab(tab);
+      }
+    } catch {}
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -269,13 +277,5 @@ function EditingPageInner() {
 }
 
 export default function EditingPage() {
-  return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-      </div>
-    }>
-      <EditingPageInner />
-    </Suspense>
-  );
+  return <EditingPageInner />;
 }
