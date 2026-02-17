@@ -473,7 +473,7 @@ export async function getDashboardStats() {
 
   const activeLeads = (leads.data || []).filter((l: any) => !['lost', 'booked'].includes(l.status)).length;
 
-  const openJobs = (jobs.data || []).filter((j: any) => !['completed', 'canceled'].includes(j.status)).length;
+  const openJobs = (jobs.data || []).filter((j: any) => !['completed', 'canceled', 'delivered'].includes(j.status)).length;
 
   const upcomingJobs = (jobs.data || [])
     .filter((j: any) => j.status === 'upcoming' && j.date)
@@ -1195,13 +1195,28 @@ export async function getUploadableJobs(): Promise<Job[]> {
     .from('jobs')
     .select('*, client:clients(first_name, last_name)')
     .in('status', ['upcoming', 'in_progress', 'editing', 'ready_for_review'])
-    .order('date', { ascending: false });
+    .order('date', { ascending: true });
 
   if (error) {
     console.error('Error fetching uploadable jobs:', error);
     return [];
   }
-  return data || [];
+
+  // Sort: today's jobs first, then by date ascending
+  const today = new Date().toISOString().split('T')[0];
+  const sorted = (data || []).sort((a: any, b: any) => {
+    const aIsToday = a.date === today;
+    const bIsToday = b.date === today;
+    if (aIsToday && !bIsToday) return -1;
+    if (!aIsToday && bIsToday) return 1;
+    // Then by date ascending (nearest first)
+    if (a.date && b.date) return new Date(a.date).getTime() - new Date(b.date).getTime();
+    if (a.date) return -1;
+    if (b.date) return 1;
+    return 0;
+  });
+
+  return sorted;
 }
 
 // ============================================

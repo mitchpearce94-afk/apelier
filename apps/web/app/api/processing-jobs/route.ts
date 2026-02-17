@@ -174,6 +174,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, deleted: data?.length || 0 });
     }
 
+    if (action === 'send_back_to_review') {
+      const { gallery_id, job_id: targetJobId } = body;
+      if (!gallery_id) {
+        return NextResponse.json({ error: 'Missing gallery_id' }, { status: 400 });
+      }
+
+      // 1. Set gallery status back to 'ready' (so it appears in review)
+      await supabaseAdmin
+        .from('galleries')
+        .update({ status: 'ready', updated_at: new Date().toISOString() })
+        .eq('id', gallery_id);
+
+      // 2. Set job status back to 'ready_for_review'
+      if (targetJobId) {
+        await supabaseAdmin
+          .from('jobs')
+          .update({ status: 'ready_for_review' })
+          .eq('id', targetJobId);
+      }
+
+      // 3. Re-create a completed processing job so it shows up in the Review tab
+      const { data: gallery } = await supabaseAdmin
+        .from('galleries')
+        .select('photographer_id')
+        .eq('id', gallery_id)
+        .single();
+
+      const { count: photoCount } = await supabaseAdmin
+        .from('photos')
+        .select('*', { count: 'exact', head: true })
+        .eq('gallery_id', gallery_id)
+        .eq('is_culled', false);
+
+      if (gallery) {
+        await supabaseAdmin
+          .from('processing_jobs')
+          .insert({
+            photographer_id: gallery.photographer_id,
+            gallery_id,
+            total_images: photoCount || 0,
+            processed_images: photoCount || 0,
+            current_phase: 'output',
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+          });
+      }
+
+      console.log('[send_back_to_review] gallery:', gallery_id, 'job:', targetJobId);
+      return NextResponse.json({ success: true });
+    }
+
     return NextResponse.json({ error: `Invalid action: ${action}` }, { status: 400 });
   } catch (err) {
     console.error('[processing-jobs API] error:', err);

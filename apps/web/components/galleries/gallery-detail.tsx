@@ -298,6 +298,30 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
               <Button size="sm" variant="secondary" onClick={() => setShowSettings(!showSettings)}>
                 <Settings className="w-3 h-3" />{showSettings ? 'Hide Settings' : 'Settings'}
               </Button>
+              {gallery.status === 'ready' && (
+                <Button size="sm" variant="secondary" onClick={async () => {
+                  // Send gallery back to review — reset gallery status and create a new processing job
+                  const updated = await updateGallery(gallery.id, { status: 'processing' as any });
+                  if (updated) {
+                    // Update job status back to ready_for_review
+                    const jobId = (gallery as any).job_id;
+                    if (jobId) {
+                      try {
+                        await fetch('/api/processing-jobs', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'send_back_to_review', gallery_id: gallery.id, job_id: jobId }),
+                        });
+                      } catch (err) {
+                        console.error('Failed to send back to review:', err);
+                      }
+                    }
+                    onBack();
+                  }
+                }}>
+                  <ArrowLeft className="w-3 h-3" />Back to Review
+                </Button>
+              )}
             </>
           ) : gallery.status === 'processing' ? (
             <Button size="sm" variant="ghost" disabled>

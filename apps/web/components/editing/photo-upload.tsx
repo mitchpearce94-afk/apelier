@@ -311,40 +311,63 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
 
             {showJobPicker && (
               <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#0c0c16] shadow-xl">
-                {jobs.map((job) => {
-                  const clientName = job.client ? `${job.client.first_name} ${job.client.last_name || ''}` : '';
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const todayJobs = jobs.filter((j) => j.date === today);
+                  const otherJobs = jobs.filter((j) => j.date !== today);
+                  const renderJob = (job: typeof jobs[0]) => {
+                    const clientName = job.client ? `${job.client.first_name} ${job.client.last_name || ''}` : '';
+                    return (
+                      <button
+                        key={job.id}
+                        onClick={async () => {
+                          setSelectedJob(job);
+                          setShowJobPicker(false);
+                          setPackageLimit(job.included_images || null);
+                          const existingGallery = await getGalleryForJob(job.id);
+                          if (existingGallery) {
+                            const count = await getGalleryPhotoCount(existingGallery.id);
+                            setExistingPhotoCount(count);
+                          } else {
+                            setExistingPhotoCount(0);
+                          }
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${
+                          selectedJob?.id === job.id ? 'bg-amber-500/10' : ''
+                        }`}
+                      >
+                        <Camera className="w-4 h-4 text-slate-600 flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-slate-200 truncate">
+                            {job.job_number ? `#${String(job.job_number).padStart(4, '0')} — ` : ''}
+                            {job.title || job.job_type || 'Untitled Job'}
+                          </p>
+                          <p className="text-[10px] text-slate-500">{clientName}{job.date ? ` · ${job.date}` : ''}</p>
+                        </div>
+                        {selectedJob?.id === job.id && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                      </button>
+                    );
+                  };
                   return (
-                    <button
-                      key={job.id}
-                      onClick={async () => {
-                        setSelectedJob(job);
-                        setShowJobPicker(false);
-                        setPackageLimit(job.included_images || null);
-                        // Check if job already has a gallery with photos
-                        const existingGallery = await getGalleryForJob(job.id);
-                        if (existingGallery) {
-                          const count = await getGalleryPhotoCount(existingGallery.id);
-                          setExistingPhotoCount(count);
-                        } else {
-                          setExistingPhotoCount(0);
-                        }
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${
-                        selectedJob?.id === job.id ? 'bg-amber-500/10' : ''
-                      }`}
-                    >
-                      <Camera className="w-4 h-4 text-slate-600 flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-slate-200 truncate">
-                          {job.job_number ? `#${String(job.job_number).padStart(4, '0')} — ` : ''}
-                          {job.title || job.job_type || 'Untitled Job'}
-                        </p>
-                        <p className="text-[10px] text-slate-500">{clientName}{job.date ? ` · ${job.date}` : ''}</p>
-                      </div>
-                      {selectedJob?.id === job.id && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
-                    </button>
+                    <>
+                      {todayJobs.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-[10px] font-medium text-amber-400 uppercase tracking-wider bg-amber-500/5 border-b border-white/[0.04]">Today</div>
+                          {todayJobs.map(renderJob)}
+                        </>
+                      )}
+                      {otherJobs.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.04]">{todayJobs.length > 0 ? 'Other Jobs' : 'All Jobs'}</div>
+                          {otherJobs.map(renderJob)}
+                        </>
+                      )}
+                      {jobs.length === 0 && (
+                        <div className="px-3 py-4 text-xs text-slate-600 text-center">No uploadable jobs found</div>
+                      )}
+                    </>
                   );
-                })}
+                })()}
               </div>
             )}
           </div>

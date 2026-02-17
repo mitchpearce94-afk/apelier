@@ -116,11 +116,25 @@ export async function generateContract(jobId: string): Promise<Contract | null> 
   const client = job.client as Client;
   const packageAmount = job.package_amount || 0;
 
-  // Check if deposit is required (we'll check if the package has deposit info)
-  // For now, we determine deposit from the job metadata or package settings
-  const requireDeposit = packageAmount > 0; // Simple heuristic; can be refined
-  const depositPercent = 25; // Default; will be configurable per package later
-  const depositAmount = Math.round(packageAmount * (depositPercent / 100) * 100) / 100;
+  // Look up the actual package to check deposit settings
+  let requireDeposit = false;
+  let depositPercent = 25;
+
+  if (job.package_name) {
+    const { data: pkg } = await sb
+      .from('packages')
+      .select('require_deposit, deposit_percent')
+      .eq('photographer_id', photographer.id)
+      .eq('name', job.package_name)
+      .single();
+
+    if (pkg) {
+      requireDeposit = pkg.require_deposit ?? false;
+      depositPercent = pkg.deposit_percent ?? 25;
+    }
+  }
+
+  const depositAmount = requireDeposit ? Math.round(packageAmount * (depositPercent / 100) * 100) / 100 : 0;
   const finalAmount = packageAmount - depositAmount;
 
   // Fill in merge tags
