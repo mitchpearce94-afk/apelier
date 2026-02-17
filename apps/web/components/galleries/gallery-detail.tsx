@@ -299,8 +299,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                 <Settings className="w-3 h-3" />{showSettings ? 'Hide Settings' : 'Settings'}
               </Button>
               {gallery.status === 'ready' && (
-                <Button size="sm" variant="secondary" onClick={async () => {
-                  // Send gallery back to review — reset gallery status and create a new processing job
+                <button onClick={async () => {
                   const updated = await updateGallery(gallery.id, { status: 'processing' as any });
                   if (updated) {
                     const jobId = (gallery as any).job_id;
@@ -315,12 +314,11 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                         console.error('Failed to send back to review:', err);
                       }
                     }
-                    // Redirect straight to the Auto Editor review tab
                     window.location.href = '/editing?tab=review';
                   }
-                }}>
-                  <ArrowLeft className="w-3 h-3" />Back to Review
-                </Button>
+                }} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors">
+                  <ArrowLeft className="w-3 h-3" />Send Back to Review
+                </button>
               )}
             </>
           ) : gallery.status === 'processing' ? (
