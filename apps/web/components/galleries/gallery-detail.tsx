@@ -114,7 +114,6 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
     async function loadPhotos() {
       try {
         const data = await getPhotos(gallery.id);
-        // Filter out rejected/declined photos — only show delivered, approved, edited, uploaded
         const visible = data.filter(p => p.status !== 'rejected');
         if (visible.length > 0) {
           const hydrated = await hydratePhotoUrls(visible);
@@ -136,21 +135,29 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
 
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
-    const expiresAt = editExpiryDays === 'none'
-      ? null
-      : new Date(Date.now() + parseInt(editExpiryDays) * 24 * 60 * 60 * 1000).toISOString();
 
     const updated = await updateGallery(gallery.id, {
       title: editTitle.trim() || gallery.title,
       description: editDescription.trim() || undefined,
-      access_type: editAccessType,
-      expires_at: expiresAt || undefined,
       download_permissions: {
         allow_full_res: editDownloadFullRes,
         allow_web: editDownloadWeb,
         allow_favorites_only: gallery.download_permissions?.allow_favorites_only ?? false,
       },
     });
+
+    // Also save password if access type is password and password is set
+    if (gallery.access_type === 'password' && galleryPassword.trim()) {
+      try {
+        await fetch('/api/gallery-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set', gallery_id: gallery.id, password: galleryPassword.trim() }),
+        });
+      } catch (err) {
+        console.error('Failed to set password:', err);
+      }
+    }
 
     if (updated) {
       const merged = { ...gallery, ...updated };
@@ -383,46 +390,43 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             />
           </div>
 
-          {/* Password (required when gallery access type is password — set in Global Gallery Settings) */}
+          {/* Download permissions */}
+          <div>
+            <label className="text-[11px] text-slate-400 block mb-1.5">Download Permissions</label>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editDownloadFullRes}
+                  onChange={(e) => setEditDownloadFullRes(e.target.checked)}
+                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                />
+                <span className="text-xs text-slate-300">Full resolution</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editDownloadWeb}
+                  onChange={(e) => setEditDownloadWeb(e.target.checked)}
+                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                />
+                <span className="text-xs text-slate-300">Web resolution</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Password (only when global gallery access type is password) */}
           {gallery.access_type === 'password' && (
             <div>
               <label className="text-[11px] text-slate-400 block mb-1.5">Gallery Password</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={galleryPassword}
-                  onChange={(e) => { setGalleryPassword(e.target.value); setPasswordSaved(false); }}
-                  placeholder="Set a password for this gallery"
-                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!galleryPassword.trim() || passwordSaving}
-                  onClick={async () => {
-                    setPasswordSaving(true);
-                    try {
-                      const res = await fetch('/api/gallery-password', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'set', gallery_id: gallery.id, password: galleryPassword.trim() }),
-                      });
-                      const data = await res.json();
-                      if (data.success) {
-                        setPasswordSaved(true);
-                        setTimeout(() => setPasswordSaved(false), 3000);
-                      }
-                    } catch (err) {
-                      console.error('Failed to set password:', err);
-                    }
-                    setPasswordSaving(false);
-                  }}
-                >
-                  {passwordSaved ? <Check className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                  {passwordSaving ? 'Saving...' : passwordSaved ? 'Saved!' : 'Set'}
-                </Button>
-              </div>
-              <p className="text-[10px] text-slate-600 mt-1">Share this password with your client so they can access their gallery.</p>
+              <input
+                type="text"
+                value={galleryPassword}
+                onChange={(e) => { setGalleryPassword(e.target.value); setPasswordSaved(false); }}
+                placeholder="Set a password for this gallery"
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+              />
+              <p className="text-[10px] text-slate-600 mt-1">Share this password with your client. Saved when you click Save Settings.</p>
             </div>
           )}
 

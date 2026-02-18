@@ -768,7 +768,7 @@ export default function SettingsPage() {
           {/* ==================== GALLERY ==================== */}
           {activeTab === 'gallery' && (
             <div className="space-y-6">
-              <Section title="Global Gallery Settings" description="These defaults apply to all new client galleries. Per-gallery overrides can be set on individual gallery pages.">
+              <Section title="Global Gallery Settings" description="These defaults apply to all new client galleries. Per-gallery overrides for title, description, password, and downloads can be set on individual gallery pages.">
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[11px] text-slate-500 mb-1">Default Expiry</label>
@@ -794,7 +794,7 @@ export default function SettingsPage() {
                           }`}>{type}</button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-slate-600 mt-1.5">When set to &quot;password&quot;, each gallery will require a password to be set before delivery.</p>
+                    <p className="text-[10px] text-slate-600 mt-1.5">When set to &quot;password&quot;, each gallery will require you to set a password before delivery.</p>
                   </div>
                   <ToggleRow label="Show watermark on preview images" checked={brandForm.gallery_watermark} onChange={(v) => setBrandForm({ ...brandForm, gallery_watermark: v })} />
                   <ToggleRow label="Allow full resolution downloads" checked={brandForm.gallery_default_download_full_res} onChange={(v) => setBrandForm({ ...brandForm, gallery_default_download_full_res: v })} />
@@ -808,7 +808,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ==================== BILLING ==================== */}
+          {/* ==================== EDITING STYLE ==================== */}
           {activeTab === 'editing_style' && (
             <EditingStyleSection photographerId={photographer?.id} />
           )}

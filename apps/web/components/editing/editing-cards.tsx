@@ -121,7 +121,11 @@ export function ProcessingCard({ job, onReview, onCancel }: { job: ProcessingJob
 
       <div className="mb-3">
         <div className="flex items-center justify-between text-xs mb-1.5">
-          <span className="text-slate-400">{job.processed_images} / {job.total_images} images</span>
+          <span className="text-slate-400">
+            {job.status === 'completed'
+              ? `${job.total_images} images`
+              : `${job.processed_images} / ${job.total_images} images`}
+          </span>
           <span className={`font-medium ${job.status === 'completed' ? 'text-emerald-400' : job.status === 'processing' ? 'text-indigo-400' : 'text-slate-500'}`}>
             {progress}%
           </span>

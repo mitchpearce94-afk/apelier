@@ -165,7 +165,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         return;
       }
 
-      // Create gallery for this job
+      // Create gallery for this job (or get existing one)
       const clientName = selectedJob.client
         ? `${selectedJob.client.first_name} ${selectedJob.client.last_name || ''}`
         : 'Untitled';
@@ -178,7 +178,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         return;
       }
 
-      // Only set job to 'editing' if it's not already further along in the pipeline
+      // Only set job to 'editing' if it's in an early stage — don't pull back from review/delivered
       const earlyStatuses = ['upcoming', 'booked', 'confirmed', 'new', 'scheduled'];
       if (!selectedJob.status || earlyStatuses.includes(selectedJob.status)) {
         await updateJob(selectedJob.id, { status: 'editing' as any });
@@ -214,7 +214,7 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
               prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f))
             );
           } else {
-            const reason = 'Upload failed — the storage service returned an error. Try again or check your internet connection.';
+            const reason = 'Upload returned no result — try again.';
             uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
             setFiles((prev) =>
               prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'error' as const, error: reason } : f))
@@ -222,12 +222,10 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Upload failed';
-          const reason = message.includes('Failed to fetch') || message.includes('NetworkError')
-            ? 'Network error — your internet connection may have dropped during upload.'
-            : message.includes('413') || message.includes('too large')
-            ? `File too large (${formatFileSize(actualFile.size)}).`
-            : message.includes('403') || message.includes('Forbidden')
-            ? 'Permission denied — your session may have expired. Try refreshing.'
+          const reason = message.includes('mime type')
+            ? `Unsupported file type. Try converting to JPEG first.`
+            : message.includes('Failed to fetch') || message.includes('NetworkError')
+            ? 'Network error — check your internet connection.'
             : `Upload error: ${message}`;
           uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
           setFiles((prev) =>
@@ -248,8 +246,10 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         setErrorModalFiles([...uploadErrorsRef.current]);
       }
 
-      // Auto-trigger AI processing pipeline
-      if (autoProcess && gallery) {
+      // Auto-trigger AI processing pipeline — but ONLY if the gallery doesn't
+      // already have a completed processing job (avoid bouncing back to queue)
+      const isExistingGallery = gallery.status === 'ready' || gallery.status === 'delivered';
+      if (autoProcess && gallery && !isExistingGallery) {
         setProcessingTriggered(true);
         setProcessingError(null);
         try {
@@ -684,12 +684,9 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] text-slate-600">You can re-upload these files after dismissing.</p>
-              <Button size="sm" onClick={() => { setErrorModalFiles([]); onUploadComplete(); }}>
-                OK
-              </Button>
-            </div>
+            <Button size="sm" className="w-full" onClick={() => { setErrorModalFiles([]); onUploadComplete(); }}>
+              OK
+            </Button>
           </div>
         </div>
       )}

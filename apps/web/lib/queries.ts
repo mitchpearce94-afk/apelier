@@ -818,19 +818,15 @@ export async function uploadPhotoToStorage(
   const storageKey = `${photographerId}/${galleryId}/originals/${timestamp}_${safeName}`;
 
   // Normalize MIME types — browsers report RAW formats inconsistently
-  // e.g. Chrome reports .dng as 'image/dng' but Supabase bucket expects 'image/x-adobe-dng'
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
   const mimeOverrides: Record<string, string> = {
-    'dng': 'image/x-adobe-dng',
-    'cr2': 'image/x-canon-cr2',
-    'cr3': 'image/x-canon-cr3',
-    'nef': 'image/x-nikon-nef',
-    'arw': 'image/x-sony-arw',
-    'raf': 'image/x-fuji-raf',
-    'orf': 'image/x-olympus-orf',
-    'rw2': 'image/x-panasonic-rw2',
+    'dng': 'image/x-adobe-dng', 'cr2': 'image/x-canon-cr2', 'cr3': 'image/x-canon-cr3',
+    'nef': 'image/x-nikon-nef', 'arw': 'image/x-sony-arw', 'raf': 'image/x-fuji-raf',
+    'orf': 'image/x-olympus-orf', 'rw2': 'image/x-panasonic-rw2',
   };
   const contentType = mimeOverrides[ext] || file.type || 'application/octet-stream';
+  // Create a new File with corrected MIME so Supabase client reads the right type
+  const uploadFile = contentType !== file.type ? new File([file], file.name, { type: contentType }) : file;
 
   // For files > 4MB, use signed upload URL (direct to Supabase, bypasses Vercel 4.5MB limit)
   // For smaller files, use the existing server-side route (simpler)
@@ -855,7 +851,7 @@ export async function uploadPhotoToStorage(
       const sb = supabase();
       const { data, error } = await sb.storage
         .from('photos')
-        .uploadToSignedUrl(storageKey, urlResult.token, file, { contentType });
+        .uploadToSignedUrl(storageKey, urlResult.token, uploadFile, { contentType });
 
       if (error) {
         console.error('Signed URL upload failed:', error.message);
@@ -866,7 +862,7 @@ export async function uploadPhotoToStorage(
     } else {
       // Small file — use existing server-side route
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       formData.append('storageKey', storageKey);
 
       const res = await fetch('/api/upload', {
