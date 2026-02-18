@@ -14,10 +14,10 @@ class Settings(BaseSettings):
     storage_bucket: str = "photos"
     max_concurrent_images: int = 4
     web_res_max_px: int = 2048
-    thumb_max_px: int = 800
+    thumb_max_px: int = 400
     jpeg_quality: int = 95
     web_quality: int = 92
-    thumb_quality: int = 85
+    thumb_quality: int = 80
 
     class Config:
         env_file = ".env"
@@ -142,3 +142,8 @@ def get_supabase() -> SupabaseClient:
     if _client is None:
         _client = SupabaseClient()
     return _client
+
+
+# Module-level convenience exports (used by orchestrator and other modules)
+settings = get_settings()
+supabase = get_supabase()
