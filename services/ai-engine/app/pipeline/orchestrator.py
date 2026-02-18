@@ -66,7 +66,7 @@ async def run_pipeline(
     model_filename = None
     if style_profile_id and use_gpu:
         try:
-            profile = supabase.select_single("style_profiles", {"id": style_profile_id})
+            profile = supabase.select_single("style_profiles", "*", {"id": f"eq.{style_profile_id}"})
             if profile and profile.get("model_key"):
                 # model_filename is stored as "{photographer_id}_{style_id}.pth"
                 model_filename = profile["model_key"].split("/")[-1]
@@ -77,7 +77,7 @@ async def run_pipeline(
             logger.warning(f"Could not load style profile: {e}")
 
     # Load photos for this gallery
-    photos = supabase.select("photos", {"gallery_id": gallery_id, "is_culled": False})
+    photos = supabase.select("photos", "*", {"gallery_id": f"eq.{gallery_id}", "is_culled": "eq.false"})
     if not photos:
         logger.error(f"No photos found for gallery {gallery_id}")
         await _update_job_status(processing_job_id, "failed", error="No photos found")
@@ -95,13 +95,15 @@ async def run_pipeline(
             try:
                 analysis = await run_phase0(photo, supabase)
                 # Update photo record with analysis results
-                supabase.update("photos", photo["id"], {
+                # Map field names to match DB schema (no duplicate_hash column,
+                # quality_score is INTEGER, phash not duplicate_hash)
+                update_data = {
                     "scene_type": analysis.get("scene_type"),
-                    "quality_score": analysis.get("quality_score"),
+                    "quality_score": int(analysis.get("quality_score", 0)),
                     "face_data": analysis.get("face_data"),
                     "exif_data": analysis.get("exif_data"),
-                    "duplicate_hash": analysis.get("duplicate_hash"),
-                })
+                }
+                supabase.update("photos", photo["id"], update_data)
             except Exception as e:
                 logger.error(f"Phase 0 failed for photo {photo['id']}: {e}")
             await _update_phase(processing_job_id, "analysis", i + 1)
