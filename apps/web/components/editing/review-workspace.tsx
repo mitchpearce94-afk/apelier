@@ -3,14 +3,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Photo } from '@/lib/types';
-import { getPhotosWithUrls, updatePhoto, getCurrentPhotographer, uploadPhotoToStorage, createPhotoRecord, type PhotoWithUrls } from '@/lib/queries';
+import { getPhotosWithUrls, updatePhoto, getCurrentPhotographer, uploadPhotoToStorage, createPhotoRecord, getStyleProfiles, type PhotoWithUrls } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
+import { Modal } from '@/components/ui/modal';
 import type { ProcessingJobWithGallery } from './mock-data';
+import type { StyleProfile } from '@/lib/types';
 import { generateMockPhotos } from './mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Camera, SlidersHorizontal,
   MessageSquare, Check, X, Star, Filter, ArrowLeft, Send,
-  AlertCircle, ImageIcon, Share2, Loader2, Upload,
+  AlertCircle, ImageIcon, Share2, Loader2, Upload, Palette, RefreshCw,
 } from 'lucide-react';
 
 // ── Helper: render photo image (signed URL or placeholder) ────────
@@ -62,6 +64,15 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   const [uploadMoreCount, setUploadMoreCount] = useState(0);
   const [uploadMoreTotal, setUploadMoreTotal] = useState(0);
   const uploadMoreRef = useRef<HTMLInputElement>(null);
+
+  // Restyle state
+  const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
+  const [restyleOpen, setRestyleOpen] = useState(false);
+  const [restyleTarget, setRestyleTarget] = useState<'selected' | 'single' | null>(null);
+  const [restyleSingleId, setRestyleSingleId] = useState<string | null>(null);
+  const [restyleProfileId, setRestyleProfileId] = useState<string | null>(null);
+  const [restyling, setRestyling] = useState(false);
+  const [restyleResult, setRestyleResult] = useState<{ status: string; message: string } | null>(null);
 
   const handleUploadMore = useCallback(async (fileList: FileList) => {
     if (!processingJob.gallery_id || fileList.length === 0) return;
@@ -151,6 +162,10 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       setLoading(false);
     }
     loadPhotos();
+    // Load style profiles for restyle dropdown
+    getStyleProfiles().then(profiles => {
+      setStyleProfiles(profiles.filter(p => p.status === 'ready'));
+    }).catch(() => {});
   }, [processingJob.gallery_id]);
 
   const sections = ['all', ...Array.from(new Set(photos.map((p) => p.section).filter(Boolean)))] as string[];
@@ -181,22 +196,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   };
 
   const handleReject = async (photoId: string) => {
-    setPhotos((prev) => {
-      const updated = prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p));
-      // Check if all photos are now culled — auto cleanup
-      const remaining = updated.filter((p) => !p.is_culled);
-      if (remaining.length === 0 && !useMockData) {
-        // Delete processing job and navigate back
-        fetch('/api/processing-jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', processing_job_id: processingJob.id }),
-        }).then(() => {
-          onBack();
-        }).catch(console.error);
-      }
-      return updated;
-    });
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p)));
     const idx = filtered.findIndex((p) => p.id === photoId);
     if (idx < filtered.length - 1) setSelectedPhoto(filtered[idx + 1]);
     else setSelectedPhoto(null);
@@ -302,6 +302,74 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
 
 
   const approvedCount = photos.filter((p) => p.status === 'approved').length;
+
+  const openRestyleForSelected = () => {
+    if (selectedIds.size === 0) return;
+    setRestyleTarget('selected');
+    setRestyleSingleId(null);
+    setRestyleProfileId(styleProfiles[0]?.id || null);
+    setRestyleResult(null);
+    setRestyleOpen(true);
+  };
+
+  const openRestyleForSingle = (photoId: string) => {
+    setRestyleTarget('single');
+    setRestyleSingleId(photoId);
+    setRestyleProfileId(styleProfiles[0]?.id || null);
+    setRestyleResult(null);
+    setRestyleOpen(true);
+  };
+
+  const handleRestyle = async () => {
+    if (!restyleProfileId || !processingJob.gallery_id) return;
+
+    const photoIds = restyleTarget === 'single' && restyleSingleId
+      ? [restyleSingleId]
+      : Array.from(selectedIds);
+
+    if (photoIds.length === 0) return;
+
+    setRestyling(true);
+    setRestyleResult(null);
+
+    try {
+      const res = await fetch('/api/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restyle',
+          gallery_id: processingJob.gallery_id,
+          style_profile_id: restyleProfileId,
+          photo_ids: photoIds,
+        }),
+      });
+
+      const result = await res.json();
+      setRestyleResult({
+        status: res.ok && result.status !== 'error' ? 'success' : 'error',
+        message: result.message || result.error || 'Unknown error',
+      });
+
+      if (res.ok && result.status !== 'error') {
+        // Mark restyling photos visually
+        setPhotos(prev => prev.map(p =>
+          photoIds.includes(p.id) ? { ...p, status: 'processing' as const } : p
+        ));
+
+        // Poll for completion after a delay
+        setTimeout(async () => {
+          const data = await getPhotosWithUrls(processingJob.gallery_id);
+          if (data.length > 0) {
+            setPhotos(data);
+          }
+        }, 15000);
+      }
+    } catch (err) {
+      setRestyleResult({ status: 'error', message: 'Failed to reach AI engine.' });
+    }
+
+    setRestyling(false);
+  };
 
   if (loading) {
     return (
@@ -424,6 +492,19 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
 
           {/* Right panel */}
           <div className="space-y-4">
+            {/* Change Style */}
+            {styleProfiles.length > 0 && !useMockData && (
+              <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
+                <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
+                  <Palette className="w-3.5 h-3.5 text-amber-400" />Change Style
+                </h4>
+                <p className="text-[11px] text-slate-500 mb-3">Re-edit this photo with a different trained style. The original RAW is preserved.</p>
+                <Button size="sm" onClick={() => openRestyleForSingle(selectedPhoto.id)} className="w-full">
+                  <RefreshCw className="w-3 h-3" />Apply Different Style
+                </Button>
+              </div>
+            )}
+
             {/* Prompt editor */}
             <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
               <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
@@ -525,6 +606,11 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
             <>
               <span className="text-xs text-slate-400">{selectedIds.size} selected</span>
               <div className="flex-1" />
+              {styleProfiles.length > 0 && selectedIds.size > 0 && !useMockData && (
+                <Button variant="secondary" size="sm" onClick={openRestyleForSelected}>
+                  <Palette className="w-3 h-3" /><span className="hidden sm:inline">Change Style</span>
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}>Cancel</Button>
               <Button size="sm" onClick={handleBulkApprove} disabled={selectedIds.size === 0}>
                 <Check className="w-3 h-3" />Approve
@@ -711,6 +797,88 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
           </div>
         </div>
       )}
+
+      {/* Restyle Modal */}
+      <Modal open={restyleOpen} onClose={() => !restyling && setRestyleOpen(false)} title="Change Editing Style">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            {restyleTarget === 'single'
+              ? 'Re-edit this photo with a different style. The original file is preserved — only the edit changes.'
+              : `Re-edit ${selectedIds.size} selected photo${selectedIds.size !== 1 ? 's' : ''} with a different style.`
+            }
+          </p>
+
+          {/* Style picker */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-2">Choose style</label>
+            <div className="space-y-2">
+              {styleProfiles.map(profile => (
+                <button
+                  key={profile.id}
+                  onClick={() => setRestyleProfileId(profile.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition-all ${
+                    restyleProfileId === profile.id
+                      ? 'border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/20'
+                      : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">{profile.name}</p>
+                      {profile.description && (
+                        <p className="text-[11px] text-slate-500 mt-0.5">{profile.description}</p>
+                      )}
+                    </div>
+                    {restyleProfileId === profile.id && (
+                      <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <Check className="w-3 h-3 text-amber-400" />
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {styleProfiles.length === 0 && (
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4 text-center">
+              <p className="text-xs text-slate-500">No trained styles available. Create a style profile in Settings → Editing Style.</p>
+            </div>
+          )}
+
+          {/* Result */}
+          {restyleResult && (
+            <div className={`rounded-lg border p-3 flex items-start gap-2 ${
+              restyleResult.status === 'success'
+                ? 'border-emerald-500/20 bg-emerald-500/5'
+                : 'border-red-500/20 bg-red-500/5'
+            }`}>
+              {restyleResult.status === 'success'
+                ? <Check className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                : <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+              }
+              <p className={`text-xs ${restyleResult.status === 'success' ? 'text-emerald-300' : 'text-red-300'}`}>
+                {restyleResult.message}
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setRestyleOpen(false)} disabled={restyling}>
+              {restyleResult?.status === 'success' ? 'Done' : 'Cancel'}
+            </Button>
+            {(!restyleResult || restyleResult.status === 'error') && (
+              <Button size="sm" onClick={handleRestyle} disabled={!restyleProfileId || restyling || styleProfiles.length === 0}>
+                {restyling ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" />Processing...</>
+                ) : (
+                  <><RefreshCw className="w-3 h-3" />Apply Style</>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
