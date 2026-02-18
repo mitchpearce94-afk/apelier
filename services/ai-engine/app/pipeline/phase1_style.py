@@ -675,14 +675,31 @@ def _apply_reference_style(img_array: np.ndarray, ref: dict, intensity: float,
 # ═══════════════════════════════════════════════════════════════
 
 def load_image_from_bytes(image_bytes: bytes) -> Optional[np.ndarray]:
-    """Decode image bytes to BGR numpy array."""
+    """Decode image bytes to BGR numpy array. Supports JPEG, PNG, TIFF, and RAW formats (DNG, CR2, NEF, etc)."""
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is not None:
         return img
+    # Try PIL for standard formats
     try:
         pil_img = Image.open(io.BytesIO(image_bytes))
         pil_img = pil_img.convert("RGB")
         return np.array(pil_img)[:, :, ::-1]
     except Exception:
+        pass
+    # Try rawpy for RAW formats (DNG, CR2, CR3, NEF, ARW, etc)
+    try:
+        import rawpy
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.dng', delete=False) as f:
+            f.write(image_bytes)
+            tmp_path = f.name
+        try:
+            with rawpy.imread(tmp_path) as raw:
+                rgb = raw.postprocess(use_camera_wb=True, no_auto_bright=False, output_bps=8)
+                return rgb[:, :, ::-1]  # RGB to BGR for OpenCV
+        finally:
+            os.unlink(tmp_path)
+    except Exception as e:
+        log.warning(f"rawpy decode failed: {e}")
         return None

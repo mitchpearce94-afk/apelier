@@ -246,10 +246,8 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         setErrorModalFiles([...uploadErrorsRef.current]);
       }
 
-      // Auto-trigger AI processing pipeline — but ONLY if the gallery doesn't
-      // already have a completed processing job (avoid bouncing back to queue)
-      const isExistingGallery = gallery.status === 'ready' || gallery.status === 'delivered';
-      if (autoProcess && gallery && !isExistingGallery) {
+      // Auto-trigger AI processing pipeline
+      if (autoProcess && gallery) {
         setProcessingTriggered(true);
         setProcessingError(null);
         try {

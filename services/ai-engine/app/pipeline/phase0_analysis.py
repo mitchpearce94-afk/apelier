@@ -350,7 +350,24 @@ def analyse_image(image_bytes: bytes) -> dict:
             pil_img = pil_img.convert("RGB")
             img = np.array(pil_img)[:, :, ::-1]  # RGB → BGR for OpenCV
         except Exception:
-            log.error("Failed to decode image")
+            pass
+
+    if img is None:
+        # Try rawpy for camera RAW (DNG, CR2, CR3, NEF, ARW, etc)
+        try:
+            import rawpy
+            import tempfile, os
+            with tempfile.NamedTemporaryFile(suffix='.dng', delete=False) as f:
+                f.write(image_bytes)
+                tmp_path = f.name
+            try:
+                with rawpy.imread(tmp_path) as raw:
+                    rgb = raw.postprocess(use_camera_wb=True, no_auto_bright=False, output_bps=8)
+                    img = rgb[:, :, ::-1]  # RGB → BGR
+            finally:
+                os.unlink(tmp_path)
+        except Exception:
+            log.error("Failed to decode image (tried cv2, PIL, rawpy)")
             return {"error": "Failed to decode image"}
 
     h, w = img.shape[:2]
