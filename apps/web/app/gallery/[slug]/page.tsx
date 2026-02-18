@@ -204,7 +204,7 @@ export default function PublicGalleryPage() {
   const [gridSize, setGridSize] = useState<'small' | 'large'>('large');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
 
-  const brandColor = brand?.brand_settings?.primary_color || '#b8860b';
+  const brandColor = brand?.brand_settings?.primary_color || '#6366f1';
   const businessName = brand?.business_name || 'Gallery';
 
   useEffect(() => { loadGallery(); }, [slug]);
@@ -467,7 +467,21 @@ export default function PublicGalleryPage() {
                         <Heart className={`w-3.5 h-3.5 ${photo.is_favorite ? 'text-pink-500 fill-pink-500' : 'text-gray-600'}`} />
                       </button>
                       {canDownload && (
-                        <button onClick={(e) => e.stopPropagation()} className="p-1.5 rounded-full bg-white/90 hover:bg-white shadow-sm transition-colors">
+                        <button onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            const res = await fetch(`/api/gallery-photos?action=download&gallery_id=${photo.gallery_id}&photo_id=${photo.id}&resolution=full`);
+                            const data = await res.json();
+                            if (data.url) {
+                              const a = document.createElement('a');
+                              a.href = data.url;
+                              a.download = photo.filename || 'photo.jpg';
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                            }
+                          } catch {}
+                        }} className="p-1.5 rounded-full bg-white/90 hover:bg-white shadow-sm transition-colors">
                           <Download className="w-3.5 h-3.5 text-gray-600" />
                         </button>
                       )}
