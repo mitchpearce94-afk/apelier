@@ -82,7 +82,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [deliverSuccessMessage, setDeliverSuccessMessage] = useState('');
 
   // Per-gallery settings state
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [editTitle, setEditTitle] = useState(gallery.title);
   const [editDescription, setEditDescription] = useState(gallery.description || '');
   const [editAccessType, setEditAccessType] = useState<GalleryAccessType>(gallery.access_type);

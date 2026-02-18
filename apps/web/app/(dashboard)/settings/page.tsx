@@ -167,6 +167,16 @@ export default function SettingsPage() {
           custom_domain: p.brand_settings.custom_domain || '',
         }));
       }
+      // Load gallery defaults from photographer record
+      const pg = p as any;
+      setBrandForm((prev) => ({
+        ...prev,
+        gallery_default_expiry_days: pg.gallery_default_expiry_days ?? 30,
+        gallery_default_access_type: pg.gallery_default_access_type || 'public',
+        gallery_default_download_full_res: pg.gallery_default_download_full_res ?? true,
+        gallery_default_download_web: pg.gallery_default_download_web ?? true,
+        gallery_watermark: pg.gallery_watermark ?? true,
+      }));
       // Load contract template
       setContractTemplate(p.contract_template || DEFAULT_CONTRACT);
       // Load signature
@@ -733,7 +743,22 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-600">Coming soon — available on Pro plan</p>
               </Section>
 
-              <Button onClick={() => { /* TODO: save to Supabase */ setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
+              <Button onClick={async () => {
+                if (!photographer) return;
+                setSaving(true);
+                const sb = createSupabaseClient();
+                await sb.from('photographers').update({
+                  brand_settings: {
+                    ...photographer.brand_settings,
+                    primary_color: brandForm.primary_color,
+                    secondary_color: brandForm.secondary_color,
+                    custom_domain: brandForm.custom_domain,
+                  },
+                }).eq('id', photographer.id);
+                setSaving(false);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+              }}>
                 {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : <><Save className="w-3.5 h-3.5" />Save Branding</>}
               </Button>
             </div>
@@ -802,7 +827,21 @@ export default function SettingsPage() {
                 </div>
               </Section>
 
-              <Button onClick={() => { /* TODO: save to Supabase */ setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
+              <Button onClick={async () => {
+                if (!photographer) return;
+                setSaving(true);
+                const sb = createSupabaseClient();
+                await sb.from('photographers').update({
+                  gallery_default_expiry_days: brandForm.gallery_default_expiry_days,
+                  gallery_default_access_type: brandForm.gallery_default_access_type,
+                  gallery_default_download_full_res: brandForm.gallery_default_download_full_res,
+                  gallery_default_download_web: brandForm.gallery_default_download_web,
+                  gallery_watermark: brandForm.gallery_watermark,
+                }).eq('id', photographer.id);
+                setSaving(false);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+              }}>
                 {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : <><Save className="w-3.5 h-3.5" />Save Gallery Settings</>}
               </Button>
             </div>

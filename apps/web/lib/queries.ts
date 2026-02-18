@@ -679,6 +679,27 @@ export async function updatePhoto(id: string, updates: Partial<Photo>): Promise<
   return data;
 }
 
+export async function deletePhoto(id: string): Promise<boolean> {
+  const sb = supabase();
+  // Get photo first to find storage keys
+  const { data: photo } = await sb.from('photos').select('*').eq('id', id).single();
+  if (!photo) return false;
+
+  // Delete storage files (best effort — don't block on failures)
+  const keysToDelete = [photo.original_key, photo.edited_key, photo.web_key, photo.thumb_key].filter(Boolean) as string[];
+  if (keysToDelete.length > 0) {
+    await sb.storage.from('photos').remove(keysToDelete).catch((err: Error) => console.error('Storage cleanup:', err));
+  }
+
+  // Delete DB record
+  const { error } = await sb.from('photos').delete().eq('id', id);
+  if (error) {
+    console.error('Error deleting photo:', error);
+    return false;
+  }
+  return true;
+}
+
 export async function bulkUpdatePhotos(ids: string[], updates: Partial<Photo>): Promise<boolean> {
   const sb = supabase();
   const { error } = await sb
