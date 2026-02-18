@@ -493,15 +493,21 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
           {/* Right panel */}
           <div className="space-y-4">
             {/* Change Style */}
-            {styleProfiles.length > 0 && !useMockData && (
+            {!useMockData && (
               <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
                 <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
                   <Palette className="w-3.5 h-3.5 text-amber-400" />Change Style
                 </h4>
-                <p className="text-[11px] text-slate-500 mb-3">Re-edit this photo with a different trained style. The original RAW is preserved.</p>
-                <Button size="sm" onClick={() => openRestyleForSingle(selectedPhoto.id)} className="w-full">
-                  <RefreshCw className="w-3 h-3" />Apply Different Style
-                </Button>
+                {styleProfiles.length > 0 ? (
+                  <>
+                    <p className="text-[11px] text-slate-500 mb-3">Re-edit this photo with a different trained style. The original file is preserved.</p>
+                    <Button size="sm" onClick={() => openRestyleForSingle(selectedPhoto.id)} className="w-full">
+                      <RefreshCw className="w-3 h-3" />Apply Different Style
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-slate-500">No trained styles yet. Go to Settings → Editing Style to create a style with before/after pairs.</p>
+                )}
               </div>
             )}
 
