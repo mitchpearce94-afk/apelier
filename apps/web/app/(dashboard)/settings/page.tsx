@@ -977,3 +977,37 @@ function TraineeComments() {
   );
 }
 
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
+        {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
+      </div>
+      <div className="space-y-3">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between py-1.5 cursor-pointer group">
+      <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative w-9 h-5 rounded-full transition-colors flex-shrink-0',
+          checked ? 'bg-indigo-500' : 'bg-white/[0.08]'
+        )}
+      >
+        <div className={cn(
+          'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all',
+          checked ? 'left-[18px]' : 'left-0.5'
+        )} />
+      </button>
+    </label>
+  );
+}
