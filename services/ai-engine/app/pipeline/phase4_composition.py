@@ -247,3 +247,33 @@ def fix_composition(img_array: np.ndarray, face_boxes: list[dict] = None, auto_c
             metadata["crop_rect"] = [x, y, cw, ch]
 
     return img_array, metadata
+
+
+# ── Orchestrator wrapper ────────────────────────────────────────
+async def run_phase4(photo: dict, supabase_client) -> dict:
+    """Download edited image, apply composition fixes, re-upload."""
+    edited_key = photo.get("edited_key") or photo.get("original_key", "").replace("originals/", "edited/")
+    if not edited_key:
+        return {"error": "No edited_key"}
+
+    image_bytes = supabase_client.storage_download("photos", edited_key)
+    if not image_bytes:
+        return {"error": f"Failed to download {edited_key}"}
+
+    import cv2, numpy as np
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"error": "Failed to decode image"}
+
+    face_boxes = photo.get("face_data") or []
+    result_img, comp_info = fix_composition(img, face_boxes=face_boxes, auto_crop=True)
+
+    # Re-encode and upload
+    _, buf = cv2.imencode(".jpg", result_img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    supabase_client.storage_upload("photos", edited_key, buf.tobytes())
+    supabase_client.update("photos", photo["id"], {
+        "ai_edits": {**(photo.get("ai_edits") or {}), "composition": comp_info},
+    })
+
+    return {"status": "success"}

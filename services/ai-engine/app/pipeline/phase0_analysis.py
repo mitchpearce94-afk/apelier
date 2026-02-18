@@ -483,3 +483,17 @@ def _compute_image_characteristics(img: np.ndarray) -> dict:
         "l_p2": round(p2, 1),
         "l_p98": round(p98, 1),
     }
+
+
+# ── Orchestrator wrapper ────────────────────────────────────────
+async def run_phase0(photo: dict, supabase_client) -> dict:
+    """Download photo from storage, run analysis, return results."""
+    original_key = photo.get("original_key")
+    if not original_key:
+        return {"error": "No original_key"}
+
+    image_bytes = supabase_client.storage_download("photos", original_key)
+    if not image_bytes:
+        return {"error": f"Failed to download {original_key}"}
+
+    return analyse_image(image_bytes)

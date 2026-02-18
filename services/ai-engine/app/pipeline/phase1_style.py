@@ -703,3 +703,36 @@ def load_image_from_bytes(image_bytes: bytes) -> Optional[np.ndarray]:
     except Exception as e:
         log.warning(f"rawpy decode failed: {e}")
         return None
+
+
+# ── Orchestrator wrapper (CPU fallback) ────────────────────────
+async def run_phase1(photo: dict, supabase_client) -> dict:
+    """CPU-based style application fallback when GPU unavailable."""
+    original_key = photo.get("original_key")
+    if not original_key:
+        return {"error": "No original_key"}
+
+    image_bytes = supabase_client.storage_download("photos", original_key)
+    if not image_bytes:
+        return {"error": f"Failed to download {original_key}"}
+
+    img = load_image_from_bytes(image_bytes)
+    if img is None:
+        return {"error": "Failed to decode image"}
+
+    # Apply basic auto-adjustments (no neural style without GPU)
+    context = {"scene_type": photo.get("scene_type", "general"), "face_count": 0}
+    adj = compute_adaptive_adjustments(context)
+    result = _apply_basic_adjustments(img, adj)
+
+    # Encode and upload
+    from app.pipeline.phase5_output import encode_jpeg
+    edited_bytes = encode_jpeg(result, quality=92)
+    edited_key = original_key.replace("originals/", "edited/")
+    supabase_client.storage_upload("photos", edited_key, edited_bytes)
+    supabase_client.update("photos", photo["id"], {
+        "edited_key": edited_key,
+        "ai_edits": {**(photo.get("ai_edits") or {}), "style": "cpu_preset"},
+    })
+
+    return {"status": "success", "edited_key": edited_key}

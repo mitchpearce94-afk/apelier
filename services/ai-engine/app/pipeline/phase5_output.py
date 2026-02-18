@@ -204,3 +204,44 @@ def get_output_keys(photographer_id: str, gallery_id: str, filename: str) -> dic
         "web_key": f"{prefix}/web/{base}.jpg",
         "thumb_key": f"{prefix}/thumbs/{base}.jpg",
     }
+
+
+# ── Orchestrator wrapper ────────────────────────────────────────
+async def run_phase5(photo: dict, gallery_id: str, supabase_client) -> dict:
+    """Generate web-res + thumbnail from edited image and upload."""
+    from app.config import settings
+
+    edited_key = photo.get("edited_key") or photo.get("original_key", "").replace("originals/", "edited/")
+    if not edited_key:
+        return {"error": "No edited_key"}
+
+    image_bytes = supabase_client.storage_download("photos", edited_key)
+    if not image_bytes:
+        return {"error": f"Failed to download {edited_key}"}
+
+    import cv2, numpy as np
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"error": "Failed to decode image"}
+
+    # Generate web resolution
+    web_img = resize_image(img, settings.web_max_px)
+    web_bytes = encode_jpeg(web_img, settings.web_quality)
+    web_key = edited_key.replace("edited/", "web/")
+    supabase_client.storage_upload("photos", web_key, web_bytes)
+
+    # Generate thumbnail
+    thumb_img = resize_image(img, settings.thumb_max_px)
+    thumb_bytes = encode_jpeg(thumb_img, settings.thumb_quality)
+    thumb_key = edited_key.replace("edited/", "thumbs/")
+    supabase_client.storage_upload("photos", thumb_key, thumb_bytes)
+
+    # Update photo record
+    supabase_client.update("photos", photo["id"], {
+        "web_key": web_key,
+        "thumb_key": thumb_key,
+        "status": "edited",
+    })
+
+    return {"status": "success", "web_key": web_key, "thumb_key": thumb_key}
