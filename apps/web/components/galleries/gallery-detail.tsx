@@ -82,7 +82,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [deliverSuccessMessage, setDeliverSuccessMessage] = useState('');
 
   // Per-gallery settings state
-  const [showSettings, setShowSettings] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(gallery.title);
   const [editDescription, setEditDescription] = useState(gallery.description || '');
   const [editAccessType, setEditAccessType] = useState<GalleryAccessType>(gallery.access_type);
@@ -101,7 +101,6 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [galleryPassword, setGalleryPassword] = useState('');
-  const [globalAccessType, setGlobalAccessType] = useState<string>(gallery.access_type || 'public');
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
 
@@ -115,9 +114,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
     async function loadPhotos() {
       try {
         const data = await getPhotos(gallery.id);
-        const visible = data.filter(p => p.status !== 'rejected');
-        if (visible.length > 0) {
-          const hydrated = await hydratePhotoUrls(visible);
+        if (data.length > 0) {
+          const hydrated = await hydratePhotoUrls(data);
           setPhotos(hydrated);
         }
       } catch (err) {
@@ -125,15 +123,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       }
       setLoading(false);
     }
-    async function loadGlobalSettings() {
-      const photographer = await getCurrentPhotographer();
-      if (photographer) {
-        const p = photographer as any;
-        setGlobalAccessType(p.gallery_default_access_type || 'public');
-      }
-    }
     loadPhotos();
-    loadGlobalSettings();
   }, [gallery.id]);
 
   const copyLink = () => {
@@ -144,29 +134,21 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
 
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
+    const expiresAt = editExpiryDays === 'none'
+      ? null
+      : new Date(Date.now() + parseInt(editExpiryDays) * 24 * 60 * 60 * 1000).toISOString();
 
     const updated = await updateGallery(gallery.id, {
       title: editTitle.trim() || gallery.title,
       description: editDescription.trim() || undefined,
+      access_type: editAccessType,
+      expires_at: expiresAt || undefined,
       download_permissions: {
         allow_full_res: editDownloadFullRes,
         allow_web: editDownloadWeb,
         allow_favorites_only: gallery.download_permissions?.allow_favorites_only ?? false,
       },
     });
-
-    // Also save password if access type is password and password is set
-    if (globalAccessType === 'password' && galleryPassword.trim()) {
-      try {
-        await fetch('/api/gallery-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'set', gallery_id: gallery.id, password: galleryPassword.trim() }),
-        });
-      } catch (err) {
-        console.error('Failed to set password:', err);
-      }
-    }
 
     if (updated) {
       const merged = { ...gallery, ...updated };
@@ -192,6 +174,12 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   ];
 
   const handleDeliver = async () => {
+    // Check password requirement
+    if (gallery.access_type === 'password' && !gallery.password) {
+      alert('This gallery requires a password before delivery. Please set a password in the gallery settings.');
+      return;
+    }
+
     setDelivering(true);
     const delivered = await deliverGallery(gallery.id);
     if (delivered) {
@@ -236,6 +224,11 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       setShowDeliverSuccess(true);
       setDelivering(false);
       setShowDeliverConfirm(false);
+
+      // Auto-redirect back to galleries after 2.5 seconds
+      setTimeout(() => {
+        onBack();
+      }, 2500);
       return;
     }
     setDelivering(false);
@@ -277,12 +270,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
               <Check className="w-8 h-8 text-emerald-400" />
             </div>
             <h3 className="text-lg font-bold text-white mb-2">Gallery Delivered!</h3>
-            <p className="text-xs text-slate-600 mt-4">{deliverSuccessMessage}</p>
-            <div className="mt-6">
-              <Button size="sm" onClick={() => { setShowDeliverSuccess(false); onBack(); }}>
-                Got it
-              </Button>
-            </div>
+            <p className="text-sm text-slate-400 mb-1">{deliverSuccessMessage}</p>
+            <p className="text-xs text-slate-600 mt-4">Redirecting back to galleries...</p>
           </div>
         </div>
       )}
@@ -399,6 +388,43 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             />
           </div>
 
+          {/* Access type + Expiry row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1.5">Access Type</label>
+              <div className="flex gap-2">
+                {(['public', 'password', 'email', 'private'] as GalleryAccessType[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setEditAccessType(t)}
+                    className={`flex-1 px-2 py-1.5 text-[11px] rounded-lg border transition-all capitalize ${
+                      editAccessType === t
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                        : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1.5">Expiry</label>
+              <select
+                value={editExpiryDays}
+                onChange={(e) => setEditExpiryDays(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+              >
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+                <option value="60">60 days</option>
+                <option value="90">90 days</option>
+                <option value="none">No expiry</option>
+              </select>
+            </div>
+          </div>
+
           {/* Download permissions */}
           <div>
             <label className="text-[11px] text-slate-400 block mb-1.5">Download Permissions</label>
@@ -424,18 +450,46 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             </div>
           </div>
 
-          {/* Password (only when global gallery settings require password) */}
-          {globalAccessType === 'password' && (
+          {/* Password (when access type is password) */}
+          {editAccessType === 'password' && (
             <div>
               <label className="text-[11px] text-slate-400 block mb-1.5">Gallery Password</label>
-              <input
-                type="text"
-                value={galleryPassword}
-                onChange={(e) => { setGalleryPassword(e.target.value); setPasswordSaved(false); }}
-                placeholder="Set a password for this gallery"
-                className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-              />
-              <p className="text-[10px] text-slate-600 mt-1">Share this password with your client. Saved when you click Save Settings.</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={galleryPassword}
+                  onChange={(e) => { setGalleryPassword(e.target.value); setPasswordSaved(false); }}
+                  placeholder="Set a password for this gallery"
+                  className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!galleryPassword.trim() || passwordSaving}
+                  onClick={async () => {
+                    setPasswordSaving(true);
+                    try {
+                      const res = await fetch('/api/gallery-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'set', gallery_id: gallery.id, password: galleryPassword.trim() }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        setPasswordSaved(true);
+                        setTimeout(() => setPasswordSaved(false), 3000);
+                      }
+                    } catch (err) {
+                      console.error('Failed to set password:', err);
+                    }
+                    setPasswordSaving(false);
+                  }}
+                >
+                  {passwordSaved ? <Check className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                  {passwordSaving ? 'Saving...' : passwordSaved ? 'Saved!' : 'Set'}
+                </Button>
+              </div>
+              <p className="text-[10px] text-slate-600 mt-1">Share this password with your client so they can access their gallery.</p>
             </div>
           )}
 

@@ -416,7 +416,7 @@ export async function getGalleries(): Promise<Gallery[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('galleries')
-    .select('*, client:clients(first_name, last_name), job:jobs(title), photos(id, thumb_key, is_culled)')
+    .select('*, client:clients(first_name, last_name), job:jobs(title), photos(id, thumb_key, web_key, is_culled)')
     .in('status', ['ready', 'delivered'])
     .order('created_at', { ascending: false });
 
@@ -428,11 +428,13 @@ export async function getGalleries(): Promise<Gallery[]> {
   // Compute photo_count and extract first thumb for cover
   const galleries = (data || []).map((g: any) => {
     const activePhotos = (g.photos || []).filter((p: any) => !p.is_culled);
-    const firstThumb = activePhotos.find((p: any) => p.thumb_key)?.thumb_key || null;
+    const firstCover = activePhotos.find((p: any) => p.web_key)?.web_key
+      || activePhotos.find((p: any) => p.thumb_key)?.thumb_key
+      || null;
     return {
       ...g,
       photo_count: activePhotos.length,
-      cover_thumb_key: firstThumb,
+      cover_thumb_key: firstCover,
       photos: undefined, // strip raw photos array from gallery object
     };
   });

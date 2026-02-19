@@ -357,6 +357,25 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   };
 
   const handleSendToGallery = async () => {
+    // Check if gallery requires a password but none is set
+    if (processingJob.gallery_id) {
+      try {
+        const sb = createSupabaseClient();
+        const { data: gallery } = await sb
+          .from('galleries')
+          .select('access_type, password')
+          .eq('id', processingJob.gallery_id)
+          .single();
+
+        if (gallery?.access_type === 'password' && !gallery?.password) {
+          alert('This gallery requires a password before delivery. Please set a password in the gallery settings first.');
+          return;
+        }
+      } catch (err) {
+        console.error('[SendToGallery] Failed to check gallery password:', err);
+      }
+    }
+
     setSendingToGallery(true);
 
     if (!useMockData) {
