@@ -3,15 +3,101 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import type { Photo } from '@/lib/types';
-import { getPhotosWithUrls, updatePhoto, deletePhoto, getCurrentPhotographer, uploadPhotoToStorage, createPhotoRecord, type PhotoWithUrls } from '@/lib/queries';
+import { getPhotosWithUrls, updatePhoto, getCurrentPhotographer, uploadPhotoToStorage, createPhotoRecord, type PhotoWithUrls } from '@/lib/queries';
 import { createClient as createSupabaseClient } from '@/lib/supabase/client';
 import type { ProcessingJobWithGallery } from './mock-data';
 import { generateMockPhotos } from './mock-data';
 import {
   Wand2, CheckCircle2, Sparkles, Camera, SlidersHorizontal,
   MessageSquare, Check, X, Star, Filter, ArrowLeft, Send,
-  AlertCircle, ImageIcon, Share2, Loader2, Upload,
+  AlertCircle, ImageIcon, Share2, Loader2, Upload, Palette,
 } from 'lucide-react';
+
+// ── Restyle: Change Style Panel ────────────────────────────
+function ChangeStylePanel({ photo, onRestyled }: {
+  photo: PhotoWithUrls;
+  onRestyled: (updatedPhoto: Partial<PhotoWithUrls>) => void;
+}) {
+  const [profiles, setProfiles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { getStyleProfiles } = await import('@/lib/queries');
+        const data = await getStyleProfiles();
+        setProfiles(data.filter((p: any) => p.status === 'ready'));
+      } catch (err) {
+        console.error('Failed to load style profiles:', err);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const handleApplyStyle = async (profileId: string) => {
+    setApplying(profileId);
+    try {
+      const res = await fetch('/api/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restyle',
+          photo_id: photo.id,
+          style_profile_id: profileId,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === 'success') {
+        // Force refresh the photo URLs by updating edited_key
+        onRestyled({ id: photo.id, edited_key: result.output_key });
+      }
+    } catch (err) {
+      console.error('Restyle failed:', err);
+    }
+    setApplying(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
+        <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
+          <Palette className="w-3.5 h-3.5 text-amber-400" />Change Style
+        </h4>
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
+      <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
+        <Palette className="w-3.5 h-3.5 text-amber-400" />Change Style
+      </h4>
+      {profiles.length === 0 ? (
+        <p className="text-[11px] text-slate-500">No trained styles available. Train a style in Settings → Editing Style.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {profiles.map((profile) => (
+            <button
+              key={profile.id}
+              onClick={() => handleApplyStyle(profile.id)}
+              disabled={applying !== null}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.06] hover:border-amber-500/30 hover:bg-amber-500/5 transition-all text-left disabled:opacity-50"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400 flex-shrink-0" />
+              <span className="text-xs text-slate-300 flex-1 truncate">{profile.name}</span>
+              {applying === profile.id && <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Helper: render photo image (signed URL or placeholder) ────────
 function PhotoImage({ photo, size = 'thumb', className = '' }: {
@@ -19,15 +105,10 @@ function PhotoImage({ photo, size = 'thumb', className = '' }: {
   size?: 'thumb' | 'web' | 'edited' | 'original';
   className?: string;
 }) {
-  // RAW file extensions that browsers cannot display natively
-  const rawExtensions = ['dng', 'cr2', 'cr3', 'nef', 'arw', 'raf', 'orf', 'rw2', 'tiff', 'tif'];
-  const fileExt = photo.filename?.split('.').pop()?.toLowerCase() || '';
-  const isRawOriginal = rawExtensions.includes(fileExt);
-
   const url = size === 'thumb' ? (photo.thumb_url || photo.web_url)
     : size === 'web' ? (photo.web_url || photo.edited_url || photo.thumb_url)
     : size === 'edited' ? (photo.edited_url || photo.web_url)
-    : (isRawOriginal ? (photo.web_url || photo.thumb_url) : (photo.original_url || photo.web_url));
+    : (photo.original_url || photo.web_url);
 
   if (!url) {
     return (
@@ -186,11 +267,12 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   };
 
   const handleReject = async (photoId: string) => {
-    // Remove from local state immediately
     setPhotos((prev) => {
-      const updated = prev.filter((p) => p.id !== photoId);
-      if (updated.length === 0 && !useMockData) {
-        // All photos deleted — clean up processing job and navigate back
+      const updated = prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p));
+      // Check if all photos are now culled — auto cleanup
+      const remaining = updated.filter((p) => !p.is_culled);
+      if (remaining.length === 0 && !useMockData) {
+        // Delete processing job and navigate back
         fetch('/api/processing-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -201,13 +283,11 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       }
       return updated;
     });
-    // Move selection to next photo
     const idx = filtered.findIndex((p) => p.id === photoId);
     if (idx < filtered.length - 1) setSelectedPhoto(filtered[idx + 1]);
     else setSelectedPhoto(null);
-    // Delete from database and storage
     if (!useMockData) {
-      await deletePhoto(photoId);
+      await updatePhoto(photoId, { is_culled: true });
     }
   };
 
@@ -312,7 +392,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -361,10 +441,10 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                   <PhotoImage photo={selectedPhoto} size="original" className="object-contain max-h-[500px]" />
                 </div>
               </div>
-              <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] overflow-hidden">
-                <div className="px-3 py-2 border-b border-indigo-500/20 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400">AI Edited</span>
-                  <Sparkles className="w-3 h-3 text-indigo-400" />
+              <div className="rounded-xl border border-amber-500/20 bg-[#0c0c16] overflow-hidden">
+                <div className="px-3 py-2 border-b border-amber-500/20 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400">AI Edited</span>
+                  <Sparkles className="w-3 h-3 text-amber-400" />
                 </div>
                 <div className="flex items-center justify-center bg-black/20 min-h-[200px] max-h-[500px]">
                   <PhotoImage photo={selectedPhoto} size="web" className="object-contain max-h-[500px]" />
@@ -419,7 +499,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                 <div className="space-y-2">
                   {selectedPhoto.prompt_edits.map((edit, i) => (
                     <div key={i} className="flex items-start gap-2 text-xs">
-                      <div className="px-2 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 flex-1">{edit.prompt}</div>
+                      <div className="px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 flex-1">{edit.prompt}</div>
                       <span className="text-emerald-400 text-[10px] mt-1">✓ Applied</span>
                     </div>
                   ))}
@@ -433,7 +513,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
             {/* Prompt editor */}
             <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
               <h4 className="text-xs font-semibold text-white mb-3 flex items-center gap-2">
-                <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />Prompt Editor
+                <MessageSquare className="w-3.5 h-3.5 text-amber-400" />Prompt Editor
               </h4>
               <p className="text-[11px] text-slate-500 mb-3">Describe what you want changed. The AI will interpret and apply non-destructively.</p>
               <div className="space-y-2">
@@ -444,7 +524,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                     value={promptText}
                     onChange={(e) => setPromptText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handlePromptSubmit()}
-                    className="flex-1 px-3 py-2 text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                    className="flex-1 px-3 py-2 text-xs bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20"
                   />
                   <Button size="sm" onClick={handlePromptSubmit} disabled={!promptText.trim()}>
                     <Send className="w-3 h-3" />
@@ -459,6 +539,25 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                 </div>
               </div>
             </div>
+
+            {/* Change Style */}
+            <ChangeStylePanel
+              photo={selectedPhoto}
+              onRestyled={(updates) => {
+                // Refresh this photo's URLs after restyle
+                setPhotos((prev) => prev.map((p) => p.id === updates.id ? { ...p, ...updates } : p));
+                // Re-load all photo URLs to get fresh signed URLs
+                if (processingJob.gallery_id) {
+                  getPhotosWithUrls(processingJob.gallery_id).then((fresh) => {
+                    if (fresh.length > 0) {
+                      setPhotos(fresh);
+                      const updated = fresh.find((f) => f.id === selectedPhoto.id);
+                      if (updated) setSelectedPhoto(updated);
+                    }
+                  });
+                }
+              }}
+            />
 
             {/* Photo metadata */}
             <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4">
@@ -519,7 +618,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
         </div>
 
         {useMockData && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
             <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
             <span>Showing demo data — real processed photos will appear here once AI processing completes.</span>
           </div>
@@ -567,7 +666,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       {/* Stats + Filters combined row */}
       <div className="flex items-center gap-2 flex-wrap text-[11px]">
         <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]">
-          <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
           <span className="text-slate-400">{stats.edited}</span>
         </div>
         <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.06]">
@@ -589,12 +688,12 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
 
         <div className="flex-1" />
 
-        <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} className="text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-indigo-500/50">
+        <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} className="text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-amber-500/50">
           {sections.map((s) => (
             <option key={s} value={s}>{s === 'all' ? 'All sections' : s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}</option>
           ))}
         </select>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-indigo-500/50">
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-[11px] bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-slate-300 focus:outline-none focus:border-amber-500/50">
           <option value="all">All</option>
           <option value="edited">Edited</option>
           <option value="approved">Approved</option>
@@ -610,7 +709,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
               key={photo.id}
               onClick={() => selectMode ? toggleSelect(photo.id) : setSelectedPhoto(photo)}
               className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer group transition-all ${
-                isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-[#07070d]' : 'hover:ring-1 hover:ring-white/20'
+                isSelected ? 'ring-2 ring-amber-500 ring-offset-1 ring-offset-[#07070d]' : 'hover:ring-1 hover:ring-white/20'
               }`}
             >
               <PhotoImage photo={photo} size="thumb" />
@@ -635,7 +734,7 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
                 </div>
               )}
               {selectMode && isSelected && (
-                <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center">
+                <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
                   <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
@@ -651,16 +750,16 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
 
       {/* Send to Gallery */}
       {sentToGallery ? (
-        <div className={`rounded-xl border p-5 ${autoDeliver ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-indigo-500/20 bg-indigo-500/5'}`}>
+        <div className={`rounded-xl border p-5 ${autoDeliver ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/20 bg-amber-500/5'}`}>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${autoDeliver ? 'bg-emerald-500/20' : 'bg-indigo-500/20'}`}>
-              <Check className={`w-5 h-5 ${autoDeliver ? 'text-emerald-400' : 'text-indigo-400'}`} />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${autoDeliver ? 'bg-emerald-500/20' : 'bg-amber-500/20'}`}>
+              <Check className={`w-5 h-5 ${autoDeliver ? 'text-emerald-400' : 'text-amber-400'}`} />
             </div>
             <div className="flex-1">
-              <p className={`text-sm font-semibold ${autoDeliver ? 'text-emerald-300' : 'text-indigo-300'}`}>
+              <p className={`text-sm font-semibold ${autoDeliver ? 'text-emerald-300' : 'text-amber-300'}`}>
                 {autoDeliver ? 'Delivered to Client' : 'Sent to Gallery'}
               </p>
-              <p className={`text-xs mt-0.5 ${autoDeliver ? 'text-emerald-400/70' : 'text-indigo-400/70'}`}>
+              <p className={`text-xs mt-0.5 ${autoDeliver ? 'text-emerald-400/70' : 'text-amber-400/70'}`}>
                 {autoDeliver
                   ? `${approvedCount} photos have been delivered to the client. The gallery email and all post-delivery automations have been triggered.`
                   : `${approvedCount} photos are ready in the gallery. Head to Galleries to review and deliver to the client.`
@@ -675,10 +774,10 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       ) : approvedCount > 0 && !selectMode && (
         <div className="fixed bottom-0 left-0 right-0 z-40 px-3 lg:pl-[264px] lg:px-6 pb-3 pt-3 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/95 to-transparent pointer-events-none">
           <div className="max-w-full pointer-events-auto">
-            <div className="rounded-xl border border-indigo-500/20 bg-[#0c0c16] p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between shadow-2xl shadow-black/50">
+            <div className="rounded-xl border border-amber-500/20 bg-[#0c0c16] p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between shadow-2xl shadow-black/50">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
-                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm font-medium text-white truncate">

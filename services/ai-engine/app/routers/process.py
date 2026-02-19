@@ -1,9 +1,10 @@
 """
 Processing API routes — trigger and monitor gallery processing.
 """
+import asyncio
 import logging
 from threading import Thread
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
@@ -30,7 +31,7 @@ class ProcessResponse(BaseModel):
 
 
 @router.post("/gallery", response_model=ProcessResponse)
-async def process_gallery(request: ProcessRequest, background_tasks: BackgroundTasks):
+async def process_gallery(request: ProcessRequest):
     gallery = get_gallery(request.gallery_id)
     if not gallery:
         return ProcessResponse(
@@ -57,32 +58,35 @@ async def process_gallery(request: ProcessRequest, background_tasks: BackgroundT
 
     sb = get_supabase()
 
-    # Check for existing processing job for this gallery — reuse it instead of creating a new one
+    # Extract photographer_id and job_id from gallery
+    photographer_id = gallery.get("photographer_id")
+    job_data = gallery.get("job") or {}
+    job_id = job_data.get("id") if isinstance(job_data, dict) else gallery.get("job_id")
+
+    # Check for existing processing job for this gallery — reuse it
     existing_jobs = sb.select(
-        "processing_jobs", "*",
+        "processing_jobs",
         {"gallery_id": f"eq.{request.gallery_id}"},
         order="created_at.desc",
     )
 
     job_row = None
     if existing_jobs:
-        # Reuse the most recent job — reset it for re-processing
         existing = existing_jobs[0]
-        sb.update("processing_jobs", {
+        sb.update("processing_jobs", existing["id"], {
             "total_images": total,
             "processed_images": total - len(unprocessed),
             "status": "queued",
             "current_phase": "queued",
             "completed_at": None,
             "error_log": None,
-        }, {"id": f"eq.{existing['id']}"})
+        })
         job_row = existing
         log.info(f"Reusing existing processing job {existing['id']} for gallery {request.gallery_id}")
     else:
-        # Create new processing job
         job_row = sb.insert("processing_jobs", {
             "gallery_id": request.gallery_id,
-            "photographer_id": gallery["photographer_id"],
+            "photographer_id": photographer_id,
             "style_profile_id": request.style_profile_id,
             "total_images": total,
             "processed_images": 0,
@@ -96,26 +100,35 @@ async def process_gallery(request: ProcessRequest, background_tasks: BackgroundT
             message="Failed to create processing job", total_images=0,
         )
 
-    job_id = job_row["id"]
+    processing_job_id = job_row["id"]
 
+    # Run pipeline in a background thread with proper asyncio.run()
     def run_in_thread():
-        import asyncio
         try:
             asyncio.run(run_pipeline(
                 gallery_id=request.gallery_id,
-                job_id=gallery.get("job_id", ""),
-                photographer_id=gallery.get("photographer_id", ""),
-                processing_job_id=job_id,
+                processing_job_id=processing_job_id,
+                photographer_id=photographer_id,
+                job_id=job_id,
                 style_profile_id=request.style_profile_id,
             ))
         except Exception as e:
             log.error(f"Pipeline thread error: {e}")
+            # Mark job as failed
+            try:
+                sb = get_supabase()
+                sb.update("processing_jobs", processing_job_id, {
+                    "status": "failed",
+                    "error_log": str(e),
+                })
+            except Exception:
+                pass
 
     thread = Thread(target=run_in_thread, daemon=True)
     thread.start()
 
     return ProcessResponse(
-        job_id=job_id, status="queued",
+        job_id=processing_job_id, status="queued",
         message=f"Processing queued for {total} photos", total_images=total,
     )
 
@@ -134,7 +147,7 @@ async def process_single_photo(photo_id: str, prompt: Optional[str] = None):
 async def get_processing_status(job_id: str):
     try:
         sb = get_supabase()
-        job = sb.select_single("processing_jobs", "*", {"id": f"eq.{job_id}"})
+        job = sb.select_single("processing_jobs", {"id": f"eq.{job_id}"})
         if not job:
             return {"error": "Job not found"}
 
