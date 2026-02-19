@@ -322,7 +322,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -484,12 +484,12 @@ export default function SettingsPage() {
                     <Input label="Other Deliverables" value={editingPackage.deliverables} onChange={(e) => setEditingPackage({ ...editingPackage, deliverables: e.target.value })} placeholder="e.g. USB drive, print credits, engagement shoot" />
                     <Textarea label="Description" value={editingPackage.description} onChange={(e) => setEditingPackage({ ...editingPackage, description: e.target.value })} placeholder="What's included in this package..." />
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={editingPackage.is_active} onChange={(e) => setEditingPackage({ ...editingPackage, is_active: e.target.checked })} className="rounded border-white/[0.08] bg-white/[0.04] text-amber-500 focus:ring-amber-500/20" />
+                      <input type="checkbox" checked={editingPackage.is_active} onChange={(e) => setEditingPackage({ ...editingPackage, is_active: e.target.checked })} className="rounded border-white/[0.08] bg-white/[0.04] text-indigo-500 focus:ring-indigo-500/20" />
                       <span className="text-sm text-slate-400">Active (show in quotes)</span>
                     </label>
                     <div className="rounded-lg border border-white/[0.06] p-3 space-y-3">
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={editingPackage.require_deposit} onChange={(e) => setEditingPackage({ ...editingPackage, require_deposit: e.target.checked })} className="rounded border-white/[0.08] bg-white/[0.04] text-amber-500 focus:ring-amber-500/20" />
+                        <input type="checkbox" checked={editingPackage.require_deposit} onChange={(e) => setEditingPackage({ ...editingPackage, require_deposit: e.target.checked })} className="rounded border-white/[0.08] bg-white/[0.04] text-indigo-500 focus:ring-indigo-500/20" />
                         <span className="text-sm text-slate-400">Require deposit to secure booking</span>
                       </label>
                       {editingPackage.require_deposit && (
@@ -538,7 +538,7 @@ export default function SettingsPage() {
                       value={contractTemplate}
                       onChange={(e) => setContractTemplate(e.target.value)}
                       rows={30}
-                      className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all font-mono resize-y leading-relaxed"
+                      className="w-full px-4 py-3 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 transition-all font-mono resize-y leading-relaxed"
                     />
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -546,7 +546,7 @@ export default function SettingsPage() {
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">Merge Tags</p>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {['{{client_name}}', '{{client_email}}', '{{job_date}}', '{{job_time}}', '{{job_location}}', '{{package_name}}', '{{package_amount}}', '{{included_images}}', '{{business_name}}', '{{photographer_name}}', '{{today_date}}'].map((tag) => (
-                            <button key={tag} type="button" onClick={() => setContractTemplate((prev) => prev + tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-amber-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{tag}</button>
+                            <button key={tag} type="button" onClick={() => setContractTemplate((prev) => prev + tag)} className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] text-indigo-400 border border-white/[0.06] hover:bg-white/[0.08] transition-colors cursor-pointer">{tag}</button>
                           ))}
                         </div>
                       </div>
@@ -597,7 +597,7 @@ export default function SettingsPage() {
               <div className="rounded-lg border border-white/[0.06] p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-2">How it works</p>
                 <div className="space-y-1.5 text-xs text-slate-500">
-                  <p>• Merge tags like <span className="text-amber-400">{'{{client_name}}'}</span> are replaced with real data when the contract is generated.</p>
+                  <p>• Merge tags like <span className="text-indigo-400">{'{{client_name}}'}</span> are replaced with real data when the contract is generated.</p>
                   <p>• Conditional blocks like <span className="text-amber-400">{'{{#if deposit}}'}</span> are only included when relevant.</p>
                   <p>• The contract adapts automatically — you write one template, it handles every job type.</p>
                   <p>• Clients receive a link to view and electronically sign the contract.</p>
@@ -732,7 +732,7 @@ export default function SettingsPage() {
                   <div>
                     <label className="block text-[11px] text-slate-500 mb-1">Default Expiry</label>
                     <select value={brandForm.gallery_default_expiry_days} onChange={(e) => setBrandForm({ ...brandForm, gallery_default_expiry_days: Number(e.target.value) })}
-                      className="w-full text-xs bg-[#12121e] border border-white/[0.08] rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-amber-500/50"
+                      className="w-full text-xs bg-[#12121e] border border-white/[0.08] rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-indigo-500/50"
                       style={{ colorScheme: 'dark' }}>
                       <option value={7}>7 days</option>
                       <option value={14}>14 days</option>
@@ -749,7 +749,7 @@ export default function SettingsPage() {
                       {(['public', 'password', 'email'] as const).map((type) => (
                         <button key={type} onClick={() => setBrandForm({ ...brandForm, gallery_default_access_type: type })}
                           className={`px-2 py-1.5 text-[11px] rounded-lg border capitalize transition-all ${
-                            brandForm.gallery_default_access_type === type ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                            brandForm.gallery_default_access_type === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
                           }`}>{type}</button>
                       ))}
                     </div>
@@ -805,13 +805,13 @@ export default function SettingsPage() {
           {activeTab === 'billing' && (
             <div className="space-y-6">
               <Section title="Current Plan" description="Manage your Apelier subscription.">
-                <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <h3 className="text-sm font-semibold text-white">Free Trial</h3>
                       <p className="text-xs text-slate-500">14 days remaining</p>
                     </div>
-                    <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-300 font-medium">Trial</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-medium">Trial</span>
                   </div>
                   <p className="text-xs text-slate-500 mb-3">Includes all features. No credit card required.</p>
                   <Button size="sm">Upgrade Plan</Button>
@@ -977,47 +977,71 @@ function TraineeComments() {
 }
 
 // ============================================
-// Editing Style Section
+// Editing Style Section — RAW + Edited Pair Training
 // ============================================
 
-const STYLE_MIN_IMAGES = 100;
-const STYLE_RECOMMENDED = 200;
-const STYLE_MAX_IMAGES = 300;
-const STYLE_ACCEPTED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif'];
+const PAIR_MIN = 10;
+const PAIR_RECOMMENDED = 25;
+const PAIR_IDEAL = 50;
+const PAIR_MAX = 100;
 
-interface StyleFile {
+const RAW_EXTENSIONS = ['.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2', '.pef', '.srw', '.x3f', '.3fr', '.mef', '.mrw', '.nrw', '.rwl', '.iiq', '.erf', '.kdc', '.dcr'];
+const EDITED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.tiff', '.tif'];
+
+interface PairFile {
   id: string;
   file: File;
+  baseName: string;
   status: 'pending' | 'uploading' | 'complete' | 'error';
   preview?: string;
 }
 
+interface MatchedPair {
+  baseName: string;
+  raw: PairFile;
+  edited: PairFile;
+}
+
+function getBaseName(fileName: string): string {
+  // Strip extension to get base name for matching
+  const parts = fileName.split('.');
+  if (parts.length > 1) parts.pop();
+  return parts.join('.').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+}
+
+function isRawFile(fileName: string): boolean {
+  const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+  return RAW_EXTENSIONS.includes(ext);
+}
+
+function isEditedFile(fileName: string): boolean {
+  const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+  return EDITED_EXTENSIONS.includes(ext);
+}
+
 function EditingStyleSection({ photographerId }: { photographerId?: string }) {
-  const [files, setFiles] = useState<StyleFile[]>([]);
-  const [existingCount, setExistingCount] = useState(0);
-  const [existingKeys, setExistingKeys] = useState<string[]>([]);
+  const [rawFiles, setRawFiles] = useState<PairFile[]>([]);
+  const [editedFiles, setEditedFiles] = useState<PairFile[]>([]);
+  const [existingPairCount, setExistingPairCount] = useState(0);
+  const [existingEditedKeys, setExistingEditedKeys] = useState<string[]>([]);
+  const [existingRawKeys, setExistingRawKeys] = useState<string[]>([]);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [styleStatus, setStyleStatus] = useState<'none' | 'pending' | 'training' | 'ready' | 'error'>('none');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [dragOver, setDragOver] = useState(false);
+  const [rawDragOver, setRawDragOver] = useState(false);
+  const [editedDragOver, setEditedDragOver] = useState(false);
   const [loadingStyle, setLoadingStyle] = useState(true);
   const [trainingDate, setTrainingDate] = useState<string | null>(null);
   const [uploadPhase, setUploadPhase] = useState<'uploading' | 'starting' | null>(null);
-  const [presetFile, setPresetFile] = useState<File | null>(null);
-  const [presetStatus, setPresetStatus] = useState<'none' | 'attached' | 'uploaded'>('none');
-  const [hasExistingPreset, setHasExistingPreset] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const presetInputRef = useRef<HTMLInputElement>(null);
+  const rawInputRef = useRef<HTMLInputElement>(null);
+  const editedInputRef = useRef<HTMLInputElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Warn user if they try to leave during upload
   useEffect(() => {
     if (!uploading) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [uploading]);
@@ -1027,16 +1051,15 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
       const profiles = await getStyleProfiles();
       if (profiles.length > 0) {
         const active = profiles[0];
-        setExistingCount(active.reference_image_keys?.length || 0);
-        setExistingKeys(active.reference_image_keys || []);
         setStyleStatus(active.status as any);
         setProfileId(active.id);
         setTrainingDate(active.training_completed_at || active.training_started_at || null);
-        // Check if profile has a preset
         const settings = active.settings as Record<string, unknown> | null;
-        if (settings?.has_preset || settings?.preset_file_key) {
-          setHasExistingPreset(true);
-        }
+        const rawKeys = (settings?.raw_image_keys as string[]) || [];
+        const editedKeys = active.reference_image_keys || [];
+        setExistingRawKeys(rawKeys);
+        setExistingEditedKeys(editedKeys);
+        setExistingPairCount(Math.min(rawKeys.length, editedKeys.length));
       }
     } catch (err) {
       console.error('Error loading style:', err);
@@ -1044,9 +1067,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
     setLoadingStyle(false);
   }, []);
 
-  useEffect(() => {
-    loadStyle();
-  }, [loadStyle]);
+  useEffect(() => { loadStyle(); }, [loadStyle]);
 
   // Poll for training status
   useEffect(() => {
@@ -1063,82 +1084,82 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
             if (data.status === 'ready' || data.status === 'error') {
               setStyleStatus(data.status);
               setTrainingDate(data.training_completed_at || data.training_started_at || null);
-              if (pollingRef.current) {
-                clearInterval(pollingRef.current);
-                pollingRef.current = null;
-              }
-              // Reload to get fresh data
+              if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
               loadStyle();
             }
           }
-        } catch {
-          // AI engine not reachable, keep polling
-        }
+        } catch { /* AI engine not reachable, keep polling */ }
       }, 5000);
     }
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
+    return () => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; } };
   }, [styleStatus, profileId, loadStyle]);
 
-  const addFiles = useCallback((newFiles: FileList | File[]) => {
-    const remaining = STYLE_MAX_IMAGES - files.length - existingCount;
-    const toAdd = Array.from(newFiles).slice(0, Math.max(0, remaining));
+  // Compute matched pairs from current files
+  const matchedPairs: MatchedPair[] = (() => {
+    const pairs: MatchedPair[] = [];
+    for (const raw of rawFiles) {
+      const match = editedFiles.find((e) => e.baseName === raw.baseName);
+      if (match) pairs.push({ baseName: raw.baseName, raw, edited: match });
+    }
+    return pairs;
+  })();
 
-    const mapped: StyleFile[] = toAdd
-      .filter((f) => {
-        const ext = '.' + f.name.split('.').pop()?.toLowerCase();
-        return STYLE_ACCEPTED_EXT.includes(ext);
-      })
+  const unmatchedRaw = rawFiles.filter((r) => !editedFiles.some((e) => e.baseName === r.baseName));
+  const unmatchedEdited = editedFiles.filter((e) => !rawFiles.some((r) => r.baseName === e.baseName));
+  const newPairCount = matchedPairs.length;
+  const totalPairs = newPairCount + existingPairCount;
+
+  const addRawFiles = useCallback((fileList: FileList | File[]) => {
+    const remaining = PAIR_MAX - rawFiles.length - existingPairCount;
+    const toAdd = Array.from(fileList).slice(0, Math.max(0, remaining));
+    const mapped: PairFile[] = toAdd
+      .filter((f) => isRawFile(f.name))
       .map((file) => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: `raw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         file,
+        baseName: getBaseName(file.name),
         status: 'pending' as const,
       }));
+    setRawFiles((prev) => [...prev, ...mapped]);
+  }, [rawFiles.length, existingPairCount]);
 
-    // Generate tiny thumbnails in background (80px — just for grid preview)
-    mapped.forEach((sf) => {
-      const img = new window.Image();
-      const url = URL.createObjectURL(sf.file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const canvas = document.createElement('canvas');
-        canvas.width = 80;
-        canvas.height = 80;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        const min = Math.min(img.width, img.height);
-        const sx = (img.width - min) / 2;
-        const sy = (img.height - min) / 2;
-        ctx.drawImage(img, sx, sy, min, min, 0, 0, 80, 80);
-        const thumb = canvas.toDataURL('image/jpeg', 0.5);
-        setFiles((prev) => prev.map((p) => p.id === sf.id ? { ...p, preview: thumb } : p));
-      };
-      img.onerror = () => URL.revokeObjectURL(url);
-      img.src = url;
-    });
-
-    setFiles((prev) => [...prev, ...mapped]);
-  }, [files.length, existingCount]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
-  }, [addFiles]);
-
-  const removeFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-  };
+  const addEditedFiles = useCallback((fileList: FileList | File[]) => {
+    const remaining = PAIR_MAX - editedFiles.length - existingPairCount;
+    const toAdd = Array.from(fileList).slice(0, Math.max(0, remaining));
+    const mapped: PairFile[] = toAdd
+      .filter((f) => isEditedFile(f.name))
+      .map((file) => {
+        const sf: PairFile = {
+          id: `edit-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          file,
+          baseName: getBaseName(file.name),
+          status: 'pending' as const,
+        };
+        // Generate thumbnail
+        const img = new window.Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const canvas = document.createElement('canvas');
+          canvas.width = 80; canvas.height = 80;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+          const min = Math.min(img.width, img.height);
+          const sx = (img.width - min) / 2; const sy = (img.height - min) / 2;
+          ctx.drawImage(img, sx, sy, min, min, 0, 0, 80, 80);
+          const thumb = canvas.toDataURL('image/jpeg', 0.5);
+          setEditedFiles((prev) => prev.map((p) => p.id === sf.id ? { ...p, preview: thumb } : p));
+        };
+        img.onerror = () => URL.revokeObjectURL(url);
+        img.src = url;
+        return sf;
+      });
+    setEditedFiles((prev) => [...prev, ...mapped]);
+  }, [editedFiles.length, existingPairCount]);
 
   const handleUpload = async () => {
-    if (files.length === 0 && !presetFile) return;
-    const totalImages = files.length + existingCount;
-    if (totalImages < STYLE_MIN_IMAGES) return;
+    if (matchedPairs.length === 0) return;
+    if (totalPairs < PAIR_MIN) return;
 
     setUploading(true);
     setUploadProgress(0);
@@ -1148,95 +1169,69 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
       const photographer = await getCurrentPhotographer();
       if (!photographer) { setUploading(false); return; }
 
-      const imageKeys: string[] = [];
-      let presetFileKey: string | null = null;
+      const newRawKeys: string[] = [];
+      const newEditedKeys: string[] = [];
+      const totalUploads = matchedPairs.length * 2;
+      let completedUploads = 0;
 
-      // Upload preset file first (if attached)
-      if (presetFile) {
+      for (const pair of matchedPairs) {
+        // Upload RAW file
+        setRawFiles((prev) => prev.map((p) => p.id === pair.raw.id ? { ...p, status: 'uploading' } : p));
         try {
-          const safeName = presetFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const presetStorageKey = `${photographer.id}/styles/presets/${Date.now()}_${safeName}`;
-
+          const safeName = pair.raw.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const rawKey = `${photographer.id}/styles/raw/${Date.now()}_${safeName}`;
           const formData = new FormData();
-          formData.append('file', presetFile);
-          formData.append('storageKey', presetStorageKey);
-
-          const res = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
-
+          formData.append('file', pair.raw.file);
+          formData.append('storageKey', rawKey);
+          const res = await fetch('/api/upload', { method: 'POST', body: formData });
           const result = await res.json();
-          if (res.ok && !result.error) {
-            presetFileKey = result.storageKey;
-            setPresetStatus('uploaded');
-          } else {
-            console.error('Preset upload failed:', result.error);
-          }
-        } catch (err) {
-          console.error('Preset upload error:', err);
+          if (!res.ok || result.error) throw new Error(result.error || 'Upload failed');
+          newRawKeys.push(result.storageKey);
+          setRawFiles((prev) => prev.map((p) => p.id === pair.raw.id ? { ...p, status: 'complete' } : p));
+        } catch {
+          setRawFiles((prev) => prev.map((p) => p.id === pair.raw.id ? { ...p, status: 'error' } : p));
         }
-      }
+        completedUploads++;
+        setUploadProgress(Math.round((completedUploads / totalUploads) * 100));
 
-      // Upload each reference image via server-side API route
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'uploading' } : p));
-
+        // Upload edited file (resized)
+        setEditedFiles((prev) => prev.map((p) => p.id === pair.edited.id ? { ...p, status: 'uploading' } : p));
         try {
-          const safeName = f.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const storageKey = `${photographer.id}/styles/my_style/${Date.now()}_${safeName}`;
-
-          // Resize to 1600px max — style training only needs colour/tone info, not full resolution
-          const resizedBlob = await resizeImage(f.file, 1600, 0.85);
-
+          const safeName = pair.edited.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const editedKey = `${photographer.id}/styles/edited/${Date.now()}_${safeName}`;
+          const resizedBlob = await resizeImage(pair.edited.file, 1600, 0.85);
           const formData = new FormData();
           formData.append('file', resizedBlob, safeName);
-          formData.append('storageKey', storageKey);
-
-          const res = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
-
+          formData.append('storageKey', editedKey);
+          const res = await fetch('/api/upload', { method: 'POST', body: formData });
           const result = await res.json();
-
-          if (!res.ok || result.error) {
-            throw new Error(result.error || 'Upload failed');
-          }
-
-          imageKeys.push(result.storageKey);
-          setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'complete' } : p));
+          if (!res.ok || result.error) throw new Error(result.error || 'Upload failed');
+          newEditedKeys.push(result.storageKey);
+          setEditedFiles((prev) => prev.map((p) => p.id === pair.edited.id ? { ...p, status: 'complete' } : p));
         } catch {
-          setFiles((prev) => prev.map((p) => p.id === f.id ? { ...p, status: 'error' } : p));
+          setEditedFiles((prev) => prev.map((p) => p.id === pair.edited.id ? { ...p, status: 'error' } : p));
         }
-
-        setUploadProgress(Math.round(((i + 1) / files.length) * 100));
+        completedUploads++;
+        setUploadProgress(Math.round((completedUploads / totalUploads) * 100));
       }
 
-      // Combine with existing keys
-      const allKeys = [...existingKeys, ...imageKeys];
+      const allEditedKeys = [...existingEditedKeys, ...newEditedKeys];
+      const allRawKeys = [...existingRawKeys, ...newRawKeys];
 
-      if (allKeys.length < 10) {
+      if (allEditedKeys.length < PAIR_MIN) {
         setUploading(false);
         setUploadPhase(null);
         return;
       }
 
-      // Trigger training via AI engine
       setUploadPhase('starting');
 
       if (profileId) {
-        // Re-train existing profile — update keys in DB first, then retrain
         const sb = createSupabaseClient();
-        const updateData: Record<string, unknown> = {
-          reference_image_keys: allKeys,
-        };
-        // If new preset uploaded, store the key in settings
-        if (presetFileKey) {
-          updateData.settings = { preset_file_key: presetFileKey };
-        }
-        await sb.from('style_profiles').update(updateData).eq('id', profileId);
+        await sb.from('style_profiles').update({
+          reference_image_keys: allEditedKeys,
+          settings: { raw_image_keys: allRawKeys, training_mode: 'paired' },
+        }).eq('id', profileId);
 
         const res = await fetch('/api/style', {
           method: 'POST',
@@ -1246,13 +1241,12 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
 
         if (res.ok) {
           setStyleStatus('training');
-          setExistingCount(allKeys.length);
-          setExistingKeys(allKeys);
+          setExistingPairCount(Math.min(allRawKeys.length, allEditedKeys.length));
+          setExistingEditedKeys(allEditedKeys);
+          setExistingRawKeys(allRawKeys);
           setTrainingDate(new Date().toISOString());
-          if (presetFileKey) setHasExistingPreset(true);
         }
       } else {
-        // Create new profile and train via AI engine
         const res = await fetch('/api/style', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1260,25 +1254,24 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
             action: 'create',
             photographer_id: photographer.id,
             name: 'My Style',
-            description: presetFileKey ? 'Preset + reference learning' : 'Default editing style',
-            reference_image_keys: allKeys,
-            preset_file_key: presetFileKey || undefined,
+            description: 'RAW + Edited pair learning',
+            reference_image_keys: allEditedKeys,
+            settings: { raw_image_keys: allRawKeys, training_mode: 'paired' },
           }),
         });
-
         const result = await res.json();
         if (res.ok && result.id) {
           setProfileId(result.id);
           setStyleStatus('training');
-          setExistingCount(allKeys.length);
-          setExistingKeys(allKeys);
+          setExistingPairCount(Math.min(allRawKeys.length, allEditedKeys.length));
+          setExistingEditedKeys(allEditedKeys);
+          setExistingRawKeys(allRawKeys);
           setTrainingDate(new Date().toISOString());
-          if (presetFileKey) setHasExistingPreset(true);
         }
       }
 
-      setFiles([]);
-      setPresetFile(null);
+      setRawFiles([]);
+      setEditedFiles([]);
     } catch (err) {
       console.error('Upload error:', err);
     }
@@ -1287,8 +1280,10 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
     setUploadPhase(null);
   };
 
-  const totalImages = files.length + existingCount;
-  const countStatus = totalImages < STYLE_MIN_IMAGES ? 'insufficient' : totalImages < STYLE_RECOMMENDED ? 'good' : 'excellent';
+  const pairStatus = totalPairs < PAIR_MIN ? 'insufficient'
+    : totalPairs < PAIR_RECOMMENDED ? 'minimum'
+    : totalPairs < PAIR_IDEAL ? 'good'
+    : 'excellent';
 
   if (loadingStyle) {
     return (
@@ -1302,7 +1297,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
     <div className="space-y-6">
       <Section
         title="Editing Style"
-        description="Upload your edited work and the AI will learn your style — colours, tones, contrast, skin handling, everything."
+        description="Upload matching RAW and edited pairs so the AI can learn exactly how you edit — your colour grading, exposure adjustments, tone curves, everything."
       >
         {/* Current status */}
         {styleStatus !== 'none' && (
@@ -1328,7 +1323,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
                     {styleStatus === 'ready' ? 'Style Trained' : styleStatus === 'training' ? 'Training in Progress' : 'Pending'}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {existingCount} reference images uploaded
+                    {existingPairCount} pair{existingPairCount !== 1 ? 's' : ''} uploaded
                     {trainingDate && ` · ${styleStatus === 'ready' ? 'Trained' : 'Started'} ${new Date(trainingDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`}
                   </p>
                 </div>
@@ -1352,7 +1347,6 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
               )}
             </div>
 
-            {/* Training comments from the AI trainee */}
             {(styleStatus === 'training' || styleStatus === 'pending') && (
               <>
                 <TraineeComments />
@@ -1360,10 +1354,9 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
               </>
             )}
 
-            {/* Success message when training completes */}
             {styleStatus === 'ready' && (
               <div className="mt-3 pt-3 border-t border-emerald-500/10">
-                <p className="text-xs text-emerald-400/80">Your editing style will now be automatically applied to all new uploads. Upload more images anytime to refine it further.</p>
+                <p className="text-xs text-emerald-400/80">Your editing style will now be automatically applied to all new uploads. Upload more pairs anytime to refine it further.</p>
               </div>
             )}
           </div>
@@ -1379,9 +1372,9 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
               <div>
                 <p className="text-sm font-medium text-slate-200 mb-1">Teach the AI your editing style</p>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Upload 100–300 of your best edited images (JPEGs). The AI will analyse them and learn your unique style — 
-                  exposure, colour grading, white balance, contrast, tone curves, skin tone handling, saturation, grain, 
-                  sharpening, and how you keep everything consistent across different scenes and lighting. 
+                  Upload your RAW files alongside their edited versions with matching filenames.
+                  The AI compares each pair to learn exactly what you change — exposure, colour grading,
+                  white balance, contrast, tone curves, skin handling, saturation, and everything else.
                   Every shoot you process will automatically be edited to match your look.
                 </p>
               </div>
@@ -1389,199 +1382,202 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
           </div>
         )}
 
-        {/* Image count bar */}
+        {/* Pair count progress bar */}
         <div>
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-slate-400">
-              {totalImages} image{totalImages !== 1 ? 's' : ''}
-              {files.length > 0 && existingCount > 0 && ` (${existingCount} existing + ${files.length} new)`}
+              {totalPairs} matched pair{totalPairs !== 1 ? 's' : ''}
+              {newPairCount > 0 && existingPairCount > 0 && ` (${existingPairCount} existing + ${newPairCount} new)`}
             </span>
             <span className={`font-medium ${
-              countStatus === 'insufficient' ? 'text-red-400' : countStatus === 'good' ? 'text-amber-400' : 'text-emerald-400'
+              pairStatus === 'insufficient' ? 'text-red-400'
+                : pairStatus === 'minimum' ? 'text-amber-400'
+                : pairStatus === 'good' ? 'text-amber-400'
+                : 'text-emerald-400'
             }`}>
-              {countStatus === 'insufficient' ? `Need ${STYLE_MIN_IMAGES - totalImages} more` : countStatus === 'good' ? 'Good — more is better' : 'Excellent'}
+              {pairStatus === 'insufficient' ? `Need ${PAIR_MIN - totalPairs} more pair${PAIR_MIN - totalPairs !== 1 ? 's' : ''}`
+                : pairStatus === 'minimum' ? 'OK — more pairs = better results'
+                : pairStatus === 'good' ? 'Good — more is better'
+                : 'Excellent'}
             </span>
           </div>
           <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
             <div
               className={`h-full transition-all duration-300 rounded-full ${
-                countStatus === 'insufficient' ? 'bg-red-500' : countStatus === 'good' ? 'bg-amber-500' : 'bg-emerald-500'
+                pairStatus === 'insufficient' ? 'bg-red-500'
+                  : pairStatus === 'minimum' ? 'bg-amber-500'
+                  : pairStatus === 'good' ? 'bg-amber-500'
+                  : 'bg-emerald-500'
               }`}
-              style={{ width: `${Math.min((totalImages / STYLE_MAX_IMAGES) * 100, 100)}%` }}
+              style={{ width: `${Math.min((totalPairs / PAIR_MAX) * 100, 100)}%` }}
             />
           </div>
           <div className="flex justify-between text-[9px] text-slate-600 mt-1">
             <span>0</span>
-            <span>{STYLE_MIN_IMAGES} min</span>
-            <span>{STYLE_RECOMMENDED} ideal</span>
-            <span>{STYLE_MAX_IMAGES}</span>
+            <span>{PAIR_MIN} min</span>
+            <span>{PAIR_RECOMMENDED} good</span>
+            <span>{PAIR_IDEAL} ideal</span>
+            <span>{PAIR_MAX}</span>
           </div>
         </div>
 
-        {/* Lightroom Preset (optional) */}
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-              <Wand2 className="w-5 h-5 text-violet-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-200 mb-0.5">Lightroom Preset <span className="text-[10px] font-normal text-slate-500 ml-1">optional</span></p>
-              <p className="text-xs text-slate-500 leading-relaxed mb-3">
-                Upload your Lightroom preset (.xmp or .lrtemplate) and the AI uses it as a baseline — then learns your scene-specific adjustments on top. This is the fastest path to professional results.
-              </p>
-
-              {/* Preset file status */}
-              {hasExistingPreset && !presetFile && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/5 border border-violet-500/15">
-                  <Check className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
-                  <span className="text-xs text-violet-300">Preset already applied to your style profile</span>
-                </div>
-              )}
-
-              {presetFile ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08]">
-                  <Wand2 className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
-                  <span className="text-xs text-slate-300 truncate flex-1">{presetFile.name}</span>
-                  <span className="text-[10px] text-slate-600 flex-shrink-0">
-                    {presetFile.size < 1024 ? `${presetFile.size} B` : `${(presetFile.size / 1024).toFixed(1)} KB`}
-                  </span>
-                  {!uploading && (
-                    <button
-                      onClick={() => { setPresetFile(null); setPresetStatus('none'); }}
-                      className="p-0.5 text-slate-600 hover:text-red-400 transition-colors flex-shrink-0"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={() => presetInputRef.current?.click()}
-                  disabled={uploading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-white/[0.1] hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-xs text-slate-400 hover:text-violet-300 disabled:opacity-50"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  {hasExistingPreset ? 'Replace preset' : 'Upload .xmp or .lrtemplate file'}
-                </button>
-              )}
-
-              <input
-                ref={presetInputRef}
-                type="file"
-                accept=".xmp,.lrtemplate"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setPresetFile(file);
-                    setPresetStatus('attached');
-                  }
-                  e.target.value = '';
-                }}
-                className="hidden"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Drop zone */}
-        <div
-          onDrop={handleDrop}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onClick={() => !uploading && fileInputRef.current?.click()}
-          className={`rounded-xl border-2 border-dashed transition-all ${
-            dragOver ? 'border-amber-500 bg-amber-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
-          } ${uploading ? 'opacity-80' : 'cursor-pointer'}`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={STYLE_ACCEPTED_EXT.join(',')}
-            onChange={(e) => e.target.files && addFiles(e.target.files)}
-            className="hidden"
-          />
-
-          {files.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 px-4">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3">
-                <Upload className="w-5 h-5 text-amber-400" />
+        {/* Side-by-side drop zones */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* RAW drop zone */}
+          <div
+            onDrop={(e) => { e.preventDefault(); setRawDragOver(false); if (e.dataTransfer.files.length > 0) addRawFiles(e.dataTransfer.files); }}
+            onDragOver={(e) => { e.preventDefault(); setRawDragOver(true); }}
+            onDragLeave={() => setRawDragOver(false)}
+            onClick={() => !uploading && rawInputRef.current?.click()}
+            className={`rounded-xl border-2 border-dashed transition-all min-h-[140px] ${
+              rawDragOver ? 'border-amber-500 bg-amber-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
+            } ${uploading ? 'opacity-80' : 'cursor-pointer'}`}
+          >
+            <input
+              ref={rawInputRef}
+              type="file"
+              multiple
+              accept={RAW_EXTENSIONS.join(',')}
+              onChange={(e) => e.target.files && addRawFiles(e.target.files)}
+              className="hidden"
+            />
+            <div className="flex flex-col items-center justify-center py-6 px-3 text-center">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mb-2">
+                <Camera className="w-4 h-4 text-amber-400" />
               </div>
-              <p className="text-sm font-medium text-slate-200 mb-1">
-                {existingCount > 0 ? 'Add more reference images' : 'Drop your edited photos here'}
-              </p>
-              <p className="text-xs text-slate-500">JPEG, PNG, TIFF — your finished, edited work</p>
+              <p className="text-xs font-medium text-slate-200 mb-0.5">RAW Originals</p>
+              <p className="text-[10px] text-slate-500">CR2, CR3, NEF, ARW, DNG, RAF...</p>
+              {rawFiles.length > 0 && (
+                <p className="text-[10px] text-amber-400 mt-1.5 font-medium">{rawFiles.length} file{rawFiles.length !== 1 ? 's' : ''} added</p>
+              )}
             </div>
-          ) : (
-            <div className="p-3" onClick={(e) => e.stopPropagation()}>
-              {uploading && (
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
-                  <p className="text-xs text-slate-400">
-                    Uploading {files.filter((f) => f.status === 'complete').length} / {files.length} images ({uploadProgress}%)
+          </div>
+
+          {/* Edited drop zone */}
+          <div
+            onDrop={(e) => { e.preventDefault(); setEditedDragOver(false); if (e.dataTransfer.files.length > 0) addEditedFiles(e.dataTransfer.files); }}
+            onDragOver={(e) => { e.preventDefault(); setEditedDragOver(true); }}
+            onDragLeave={() => setEditedDragOver(false)}
+            onClick={() => !uploading && editedInputRef.current?.click()}
+            className={`rounded-xl border-2 border-dashed transition-all min-h-[140px] ${
+              editedDragOver ? 'border-amber-500 bg-amber-500/5' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]'
+            } ${uploading ? 'opacity-80' : 'cursor-pointer'}`}
+          >
+            <input
+              ref={editedInputRef}
+              type="file"
+              multiple
+              accept={EDITED_EXTENSIONS.join(',')}
+              onChange={(e) => e.target.files && addEditedFiles(e.target.files)}
+              className="hidden"
+            />
+            <div className="flex flex-col items-center justify-center py-6 px-3 text-center">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center mb-2">
+                <Wand2 className="w-4 h-4 text-amber-400" />
+              </div>
+              <p className="text-xs font-medium text-slate-200 mb-0.5">Edited Versions</p>
+              <p className="text-[10px] text-slate-500">JPEG, PNG, TIFF — your finished edits</p>
+              {editedFiles.length > 0 && (
+                <p className="text-[10px] text-amber-400 mt-1.5 font-medium">{editedFiles.length} file{editedFiles.length !== 1 ? 's' : ''} added</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Matching status */}
+        {(rawFiles.length > 0 || editedFiles.length > 0) && (
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-300">Pair Matching</p>
+              <p className="text-xs text-slate-500">{rawFiles.length} RAW · {editedFiles.length} edited</p>
+            </div>
+
+            {newPairCount > 0 && (
+              <div className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                <span className="text-xs text-emerald-400">{newPairCount} matched pair{newPairCount !== 1 ? 's' : ''} ready</span>
+              </div>
+            )}
+
+            {unmatchedRaw.length > 0 && (
+              <div className="flex items-start gap-2">
+                <ImageIcon className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs text-amber-400">{unmatchedRaw.length} RAW file{unmatchedRaw.length !== 1 ? 's' : ''} without matching edit</span>
+                  <p className="text-[10px] text-slate-600 mt-0.5">
+                    {unmatchedRaw.slice(0, 3).map((f) => f.file.name).join(', ')}{unmatchedRaw.length > 3 ? `, +${unmatchedRaw.length - 3} more` : ''}
                   </p>
                 </div>
-              )}
-              <div className="grid grid-cols-8 sm:grid-cols-10 gap-1 max-h-72 overflow-y-scroll pr-1" onWheel={(e) => e.stopPropagation()}>
-                {files.map((f) => (
-                  <div key={f.id} className="relative aspect-square rounded overflow-hidden bg-white/[0.04] group">
-                    {f.preview ? (
-                      <img src={f.preview} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Camera className="w-3 h-3 text-slate-700" />
-                      </div>
-                    )}
-                    {f.status === 'complete' && (
-                      <div className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 flex items-center justify-center">
-                        <Check className="w-1.5 h-1.5 text-white" />
-                      </div>
-                    )}
-                    {f.status === 'uploading' && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded">
-                        <Loader2 className="w-3 h-3 text-white animate-spin" />
-                      </div>
-                    )}
-                    {f.status === 'error' && (
-                      <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center rounded">
-                        <X className="w-3 h-3 text-red-300" />
-                      </div>
-                    )}
-                    {f.status === 'pending' && !uploading && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                      >
-                        <X className="w-2 h-2 text-white" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {totalImages < STYLE_MAX_IMAGES && !uploading && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square rounded border border-dashed border-white/[0.1] flex items-center justify-center hover:border-amber-500/40 hover:bg-amber-500/5 transition-all"
-                  >
-                    <span className="text-lg text-slate-600">+</span>
-                  </button>
-                )}
               </div>
+            )}
+
+            {unmatchedEdited.length > 0 && (
+              <div className="flex items-start gap-2">
+                <ImageIcon className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-xs text-amber-400">{unmatchedEdited.length} edited file{unmatchedEdited.length !== 1 ? 's' : ''} without matching RAW</span>
+                  <p className="text-[10px] text-slate-600 mt-0.5">
+                    {unmatchedEdited.slice(0, 3).map((f) => f.file.name).join(', ')}{unmatchedEdited.length > 3 ? `, +${unmatchedEdited.length - 3} more` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <p className="text-[10px] text-slate-600">Files are matched by filename — e.g. <span className="text-slate-400">IMG_1234.CR2</span> pairs with <span className="text-slate-400">IMG_1234.jpg</span></p>
+          </div>
+        )}
+
+        {/* Matched pairs preview grid */}
+        {matchedPairs.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-medium text-slate-400">Matched Pairs Preview</p>
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-48 overflow-y-auto pr-1">
+              {matchedPairs.slice(0, 24).map((pair) => (
+                <div key={pair.baseName} className="relative aspect-square rounded-lg overflow-hidden bg-white/[0.04] group">
+                  {pair.edited.preview ? (
+                    <img src={pair.edited.preview} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Camera className="w-3 h-3 text-slate-700" />
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-1 py-0.5">
+                    <p className="text-[8px] text-white/80 truncate">{pair.baseName}</p>
+                  </div>
+                  {pair.raw.status === 'complete' && pair.edited.status === 'complete' && (
+                    <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
+                      <Check className="w-2 h-2 text-white" />
+                    </div>
+                  )}
+                  {(pair.raw.status === 'uploading' || pair.edited.status === 'uploading') && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="w-3 h-3 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+              ))}
+              {matchedPairs.length > 24 && (
+                <div className="aspect-square rounded-lg bg-white/[0.04] flex items-center justify-center">
+                  <span className="text-xs text-slate-500">+{matchedPairs.length - 24}</span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Tips */}
-        {totalImages < STYLE_MIN_IMAGES && files.length === 0 && (
+        {totalPairs < PAIR_MIN && rawFiles.length === 0 && editedFiles.length === 0 && (
           <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] p-3">
-            <p className="text-[11px] font-medium text-slate-300 mb-1.5">For best results, include a mix of:</p>
+            <p className="text-[11px] font-medium text-slate-300 mb-1.5">For best results, include pairs from a mix of:</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-slate-500">
-              <span>• Indoor & outdoor shots</span>
+              <span>• Indoor &amp; outdoor shots</span>
               <span>• Different skin tones</span>
-              <span>• Natural light & flash</span>
-              <span>• Ceremony & reception</span>
-              <span>• Golden hour & overcast</span>
-              <span>• Portraits & details</span>
+              <span>• Natural light &amp; flash</span>
+              <span>• Ceremony &amp; reception</span>
+              <span>• Golden hour &amp; overcast</span>
+              <span>• Portraits &amp; details</span>
             </div>
+            <p className="text-[10px] text-slate-600 mt-2">Variety matters more than volume — 25 diverse pairs will outperform 100 pairs from the same shoot.</p>
           </div>
         )}
 
@@ -1591,7 +1587,7 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
             <div className="flex items-center gap-2 mb-2">
               <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
               <span className="text-xs font-medium text-amber-300">
-                {uploadPhase === 'starting' ? 'Starting AI training...' : `Uploading... ${uploadProgress}%`}
+                {uploadPhase === 'starting' ? 'Starting AI training...' : `Uploading pairs... ${uploadProgress}%`}
               </span>
             </div>
             <div className="h-1.5 bg-amber-500/10 rounded-full overflow-hidden">
@@ -1607,16 +1603,17 @@ function EditingStyleSection({ photographerId }: { photographerId?: string }) {
         )}
 
         {/* Upload button */}
-        {(files.length > 0 || (presetFile && existingCount >= STYLE_MIN_IMAGES)) && !uploading && (
+        {newPairCount > 0 && !uploading && (
           <div className="flex items-center justify-between">
-            <button onClick={() => { setFiles([]); setPresetFile(null); setPresetStatus('none'); }} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-              Clear {files.length > 0 ? `${files.length} files` : 'preset'}
+            <button
+              onClick={() => { setRawFiles([]); setEditedFiles([]); }}
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Clear all files
             </button>
-            <Button size="sm" onClick={handleUpload} disabled={totalImages < STYLE_MIN_IMAGES}>
+            <Button size="sm" onClick={handleUpload} disabled={totalPairs < PAIR_MIN}>
               <Upload className="w-3 h-3" />
-              {presetFile && files.length === 0
-                ? 'Upload Preset & Retrain'
-                : existingCount > 0 ? `Upload ${files.length} & Retrain` : `Upload ${files.length} & Train`}
+              {existingPairCount > 0 ? `Upload ${newPairCount} Pairs & Retrain` : `Upload ${newPairCount} Pairs & Train`}
             </Button>
           </div>
         )}
@@ -1665,7 +1662,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
         onClick={() => onChange(!checked)}
         className={cn(
           'relative w-9 h-5 rounded-full transition-colors flex-shrink-0',
-          checked ? 'bg-amber-500' : 'bg-white/[0.08]'
+          checked ? 'bg-indigo-500' : 'bg-white/[0.08]'
         )}
       >
         <div className={cn(
