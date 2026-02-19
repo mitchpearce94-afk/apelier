@@ -416,7 +416,8 @@ export async function getGalleries(): Promise<Gallery[]> {
   const sb = supabase();
   const { data, error } = await sb
     .from('galleries')
-    .select('*, client:clients(first_name, last_name), job:jobs(title), photos(id, thumb_key, web_key, is_culled)')
+    .select('*, client:clients(first_name, last_name), job:jobs(title), photos(id, thumb_key, is_culled)')
+    .in('status', ['ready', 'delivered'])
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -424,15 +425,14 @@ export async function getGalleries(): Promise<Gallery[]> {
     return [];
   }
 
-  // Compute photo_count and extract first cover image (prefer web_key for quality)
+  // Compute photo_count and extract first thumb for cover
   const galleries = (data || []).map((g: any) => {
     const activePhotos = (g.photos || []).filter((p: any) => !p.is_culled);
-    const firstCover = activePhotos.find((p: any) => p.web_key)?.web_key
-      || activePhotos.find((p: any) => p.thumb_key)?.thumb_key || null;
+    const firstThumb = activePhotos.find((p: any) => p.thumb_key)?.thumb_key || null;
     return {
       ...g,
       photo_count: activePhotos.length,
-      cover_thumb_key: firstCover,
+      cover_thumb_key: firstThumb,
       photos: undefined, // strip raw photos array from gallery object
     };
   });
@@ -468,6 +468,10 @@ export async function getDashboardStats() {
     sb.from('invoices').select('id, status, total'),
   ]);
 
+  // Get images edited count from photographer record (persists even when photos are deleted)
+  const photographer = await getCurrentPhotographer();
+  const imagesEditedCount = (photographer as any)?.images_edited_count || 0;
+
   const totalRevenue = (invoices.data || [])
     .filter((i: any) => i.status === 'paid')
     .reduce((sum: number, i: any) => sum + (i.total || 0), 0);
@@ -488,6 +492,7 @@ export async function getDashboardStats() {
     openJobs,
     totalRevenue,
     upcomingJobs,
+    imagesEditedThisMonth: imagesEditedCount,
   };
 }
 
@@ -680,27 +685,6 @@ export async function updatePhoto(id: string, updates: Partial<Photo>): Promise<
   return data;
 }
 
-export async function deletePhoto(id: string): Promise<boolean> {
-  const sb = supabase();
-  // Get photo first to find storage keys
-  const { data: photo } = await sb.from('photos').select('*').eq('id', id).single();
-  if (!photo) return false;
-
-  // Delete storage files (best effort — don't block on failures)
-  const keysToDelete = [photo.original_key, photo.edited_key, photo.web_key, photo.thumb_key].filter(Boolean) as string[];
-  if (keysToDelete.length > 0) {
-    await sb.storage.from('photos').remove(keysToDelete).catch((err: Error) => console.error('Storage cleanup:', err));
-  }
-
-  // Delete DB record
-  const { error } = await sb.from('photos').delete().eq('id', id);
-  if (error) {
-    console.error('Error deleting photo:', error);
-    return false;
-  }
-  return true;
-}
-
 export async function bulkUpdatePhotos(ids: string[], updates: Partial<Photo>): Promise<boolean> {
   const sb = supabase();
   const { error } = await sb
@@ -839,52 +823,48 @@ export async function uploadPhotoToStorage(
   const timestamp = Date.now();
   const storageKey = `${photographerId}/${galleryId}/originals/${timestamp}_${safeName}`;
 
-  // Normalize MIME types — browsers report RAW formats inconsistently
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  const mimeOverrides: Record<string, string> = {
-    'dng': 'image/x-adobe-dng', 'cr2': 'image/x-canon-cr2', 'cr3': 'image/x-canon-cr3',
-    'nef': 'image/x-nikon-nef', 'arw': 'image/x-sony-arw', 'raf': 'image/x-fuji-raf',
-    'orf': 'image/x-olympus-orf', 'rw2': 'image/x-panasonic-rw2',
-  };
-  const contentType = mimeOverrides[ext] || file.type || 'application/octet-stream';
-  // Create a new File with corrected MIME so Supabase client reads the right type
-  const uploadFile = contentType !== file.type ? new File([file], file.name, { type: contentType }) : file;
-
   // For files > 4MB, use signed upload URL (direct to Supabase, bypasses Vercel 4.5MB limit)
   // For smaller files, use the existing server-side route (simpler)
   const SIGNED_URL_THRESHOLD = 4 * 1024 * 1024; // 4MB
 
   try {
     if (file.size > SIGNED_URL_THRESHOLD) {
-      // Step 1: Get signed upload token from our API (uses admin/service role)
+      // Get signed upload URL from our API
       const urlRes = await fetch('/api/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storageKey, contentType }),
+        body: JSON.stringify({
+          storageKey,
+          contentType: file.type || 'application/octet-stream',
+        }),
       });
 
       const urlResult = await urlRes.json();
       if (!urlRes.ok || urlResult.error) {
         console.error('Failed to get signed upload URL:', urlResult.error);
-        throw new Error(urlResult.error || 'Failed to get upload URL');
+        return null;
       }
 
-      // Step 2: Upload using Supabase client's uploadToSignedUrl (token-based, bypasses RLS)
-      const sb = supabase();
-      const { data, error } = await sb.storage
-        .from('photos')
-        .uploadToSignedUrl(storageKey, urlResult.token, uploadFile, { contentType });
+      // Upload directly to Supabase Storage using the signed URL
+      const uploadRes = await fetch(urlResult.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+        },
+        body: file,
+      });
 
-      if (error) {
-        console.error('Signed URL upload failed:', error.message);
-        throw new Error(error.message);
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error('Direct upload failed:', errText);
+        return null;
       }
 
       return { storageKey, publicUrl: '' };
     } else {
       // Small file — use existing server-side route
       const formData = new FormData();
-      formData.append('file', uploadFile);
+      formData.append('file', file);
       formData.append('storageKey', storageKey);
 
       const res = await fetch('/api/upload', {
@@ -895,14 +875,14 @@ export async function uploadPhotoToStorage(
       const result = await res.json();
       if (!res.ok || result.error) {
         console.error('Error uploading file:', result.error);
-        throw new Error(result.error || 'Upload failed');
+        return null;
       }
 
       return { storageKey: result.storageKey, publicUrl: '' };
     }
   } catch (err) {
     console.error('Error uploading file:', err);
-    throw err;
+    return null;
   }
 }
 
@@ -1135,6 +1115,7 @@ export async function getGalleryPhotos(galleryId: string): Promise<Photo[]> {
     .from('photos')
     .select('*')
     .eq('gallery_id', galleryId)
+    .eq('is_culled', false)
     .in('status', ['edited', 'approved', 'delivered'])
     .order('sort_order', { ascending: true });
 

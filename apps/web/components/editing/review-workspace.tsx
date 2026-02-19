@@ -267,12 +267,13 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
   };
 
   const handleReject = async (photoId: string) => {
+    // Find the photo before removing from state
+    const photo = photos.find((p) => p.id === photoId);
+
     setPhotos((prev) => {
-      const updated = prev.map((p) => (p.id === photoId ? { ...p, is_culled: true } : p));
-      // Check if all photos are now culled — auto cleanup
-      const remaining = updated.filter((p) => !p.is_culled);
-      if (remaining.length === 0 && !useMockData) {
-        // Delete processing job and navigate back
+      const updated = prev.filter((p) => p.id !== photoId);
+      // If no photos left, clean up and navigate back
+      if (updated.length === 0 && !useMockData) {
         fetch('/api/processing-jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -283,11 +284,39 @@ export function ReviewWorkspace({ processingJob, onBack }: { processingJob: Proc
       }
       return updated;
     });
+
+    // Move to next photo
     const idx = filtered.findIndex((p) => p.id === photoId);
-    if (idx < filtered.length - 1) setSelectedPhoto(filtered[idx + 1]);
-    else setSelectedPhoto(null);
+    const remaining = filtered.filter((p) => p.id !== photoId);
+    if (remaining.length > 0) {
+      setSelectedPhoto(remaining[Math.min(idx, remaining.length - 1)]);
+    } else {
+      setSelectedPhoto(null);
+    }
+
     if (!useMockData) {
-      await updatePhoto(photoId, { is_culled: true });
+      // Delete photo record from DB (cascade will handle related data)
+      // Also delete storage files
+      try {
+        const res = await fetch('/api/photos', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_id: photoId,
+            storage_keys: [
+              photo?.original_key,
+              photo?.edited_key,
+              photo?.web_key,
+              photo?.thumb_key,
+            ].filter(Boolean),
+          }),
+        });
+        if (!res.ok) {
+          console.error('[Reject] Delete failed:', await res.text());
+        }
+      } catch (err) {
+        console.error('[Reject] Delete error:', err);
+      }
     }
   };
 
