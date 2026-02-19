@@ -40,24 +40,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(result);
     }
 
-    if (action === 'restyle') {
-      // Re-edit a single photo with a different style
-      const { photo_id, style_profile_id } = body;
-      if (!photo_id || !style_profile_id) {
+    if (action === 'restyle_photo') {
+      // Re-process a single photo with a different style profile
+      const { photo_id, style_profile_id: restyle_id } = body;
+      if (!photo_id || !restyle_id) {
         return NextResponse.json({ error: 'Missing photo_id or style_profile_id' }, { status: 400 });
       }
 
-      const response = await fetch(`${AI_ENGINE_URL}/api/process/restyle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo_id, style_profile_id }),
-      });
-
-      const result = await response.json();
-      return NextResponse.json(result, { status: response.ok ? 200 : 500 });
+      try {
+        const response = await fetch(`${AI_ENGINE_URL}/api/process/restyle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            photo_id,
+            style_profile_id: restyle_id,
+            gallery_id: gallery_id || null,
+          }),
+        });
+        const result = await response.json();
+        return NextResponse.json(result, { status: response.ok ? 200 : 500 });
+      } catch (err) {
+        console.error('Restyle API error:', err);
+        return NextResponse.json(
+          { error: 'AI Engine is not reachable for restyle.' },
+          { status: 503 },
+        );
+      }
     }
 
-    return NextResponse.json({ error: 'Invalid action. Use "process", "status", or "restyle".' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid action. Use "process", "status", or "restyle_photo".' }, { status: 400 });
 
   } catch (err) {
     console.error('Process API error:', err);

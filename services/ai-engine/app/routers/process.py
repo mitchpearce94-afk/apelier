@@ -1,10 +1,9 @@
 """
 Processing API routes — trigger and monitor gallery processing.
 """
-import asyncio
 import logging
 from threading import Thread
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 
@@ -31,7 +30,7 @@ class ProcessResponse(BaseModel):
 
 
 @router.post("/gallery", response_model=ProcessResponse)
-async def process_gallery(request: ProcessRequest):
+async def process_gallery(request: ProcessRequest, background_tasks: BackgroundTasks):
     gallery = get_gallery(request.gallery_id)
     if not gallery:
         return ProcessResponse(
@@ -58,35 +57,32 @@ async def process_gallery(request: ProcessRequest):
 
     sb = get_supabase()
 
-    # Extract photographer_id and job_id from gallery
-    photographer_id = gallery.get("photographer_id")
-    job_data = gallery.get("job") or {}
-    job_id = job_data.get("id") if isinstance(job_data, dict) else gallery.get("job_id")
-
-    # Check for existing processing job for this gallery — reuse it
+    # Check for existing processing job for this gallery — reuse it instead of creating a new one
     existing_jobs = sb.select(
-        "processing_jobs",
-        {"gallery_id": request.gallery_id},
+        "processing_jobs", "*",
+        {"gallery_id": f"eq.{request.gallery_id}"},
         order="created_at.desc",
     )
 
     job_row = None
     if existing_jobs:
+        # Reuse the most recent job — reset it for re-processing
         existing = existing_jobs[0]
-        sb.update("processing_jobs", existing["id"], {
+        sb.update("processing_jobs", {
             "total_images": total,
             "processed_images": total - len(unprocessed),
             "status": "queued",
             "current_phase": "queued",
             "completed_at": None,
             "error_log": None,
-        })
+        }, {"id": f"eq.{existing['id']}"})
         job_row = existing
         log.info(f"Reusing existing processing job {existing['id']} for gallery {request.gallery_id}")
     else:
+        # Create new processing job
         job_row = sb.insert("processing_jobs", {
             "gallery_id": request.gallery_id,
-            "photographer_id": photographer_id,
+            "photographer_id": gallery["photographer_id"],
             "style_profile_id": request.style_profile_id,
             "total_images": total,
             "processed_images": 0,
@@ -100,35 +96,25 @@ async def process_gallery(request: ProcessRequest):
             message="Failed to create processing job", total_images=0,
         )
 
-    processing_job_id = job_row["id"]
+    job_id = job_row["id"]
 
-    # Run pipeline in a background thread with proper asyncio.run()
     def run_in_thread():
         try:
-            asyncio.run(run_pipeline(
+            run_pipeline(
+                processing_job_id=job_id,
                 gallery_id=request.gallery_id,
-                processing_job_id=processing_job_id,
-                photographer_id=photographer_id,
-                job_id=job_id,
                 style_profile_id=request.style_profile_id,
-            ))
+                settings_override=request.settings,
+                included_images=request.included_images,
+            )
         except Exception as e:
             log.error(f"Pipeline thread error: {e}")
-            # Mark job as failed
-            try:
-                sb = get_supabase()
-                sb.update("processing_jobs", processing_job_id, {
-                    "status": "failed",
-                    "error_log": str(e),
-                })
-            except Exception:
-                pass
 
     thread = Thread(target=run_in_thread, daemon=True)
     thread.start()
 
     return ProcessResponse(
-        job_id=processing_job_id, status="queued",
+        job_id=job_id, status="queued",
         message=f"Processing queued for {total} photos", total_images=total,
     )
 
@@ -143,11 +129,109 @@ async def process_single_photo(photo_id: str, prompt: Optional[str] = None):
     }
 
 
+class RestyleRequest(BaseModel):
+    photo_id: str
+    style_profile_id: str
+    gallery_id: Optional[str] = None
+
+
+@router.post("/restyle")
+async def restyle_photo(request: RestyleRequest):
+    """Re-apply a different style profile to a single photo."""
+    from app.pipeline.phase1_style import apply_style, load_image_from_bytes, compute_channel_stats
+    from app.storage.supabase_storage import download_photo, upload_photo
+    import cv2
+    import numpy as np
+
+    try:
+        sb = get_supabase()
+
+        # Get the photo record
+        photo = sb.select_single("photos", "*", {"id": f"eq.{request.photo_id}"})
+        if not photo:
+            return {"error": "Photo not found", "status": "error"}
+
+        original_key = photo.get("original_key")
+        if not original_key:
+            return {"error": "Photo has no original file", "status": "error"}
+
+        # Get the style profile
+        profile = sb.select_single("style_profiles", "*", {"id": f"eq.{request.style_profile_id}"})
+        if not profile:
+            return {"error": "Style profile not found", "status": "error"}
+
+        if profile.get("status") != "ready":
+            return {"error": "Style profile is not trained yet", "status": "error"}
+
+        settings = profile.get("settings") or {}
+
+        # Download the original photo
+        img_bytes = download_photo(original_key)
+        if not img_bytes:
+            return {"error": "Could not download original photo", "status": "error"}
+
+        img = load_image_from_bytes(img_bytes)
+        if img is None:
+            return {"error": "Could not decode photo", "status": "error"}
+
+        # Apply the style
+        ref = settings.get("reference")
+        preset = settings.get("preset")
+        if ref:
+            from app.pipeline.phase1_style import _apply_reference_style
+            result_img = _apply_reference_style(img, ref, intensity=0.75)
+            if preset:
+                from app.pipeline.phase1_style import apply_preset_params
+                result_img = apply_preset_params(result_img, preset, intensity=0.5)
+        elif preset:
+            from app.pipeline.phase1_style import apply_preset_params
+            result_img = apply_preset_params(img, preset, intensity=0.85)
+        else:
+            result_img = apply_style(img, settings)
+
+        # Encode result as JPEG
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, 95]
+        _, buffer = cv2.imencode('.jpg', result_img, encode_params)
+        result_bytes = buffer.tobytes()
+
+        # Upload to edited location
+        edited_key = original_key.replace("uploads/", "edited/").rsplit(".", 1)[0] + ".jpg"
+        upload_photo(edited_key, result_bytes, "image/jpeg")
+
+        # Update photo record
+        sb.update("photos", request.photo_id, {
+            "edited_key": edited_key,
+            "ai_edits": {
+                **(photo.get("ai_edits") or {}),
+                "style_applied": True,
+                "style_profile_id": request.style_profile_id,
+                "style_profile_name": profile.get("name", "Unknown"),
+            },
+        })
+
+        # Generate a fresh signed URL for the edited image
+        from app.storage.supabase_storage import get_signed_url
+        edited_url = get_signed_url(edited_key) or ""
+
+        return {
+            "photo_id": request.photo_id,
+            "status": "success",
+            "edited_key": edited_key,
+            "edited_url": edited_url,
+            "style_name": profile.get("name"),
+            "message": f"Style '{profile.get('name')}' applied successfully",
+        }
+
+    except Exception as e:
+        log.error(f"Restyle failed: {e}")
+        return {"error": str(e), "status": "error"}
+
+
 @router.get("/status/{job_id}")
 async def get_processing_status(job_id: str):
     try:
         sb = get_supabase()
-        job = sb.select_single("processing_jobs", {"id": job_id})
+        job = sb.select_single("processing_jobs", "*", {"id": f"eq.{job_id}"})
         if not job:
             return {"error": "Job not found"}
 

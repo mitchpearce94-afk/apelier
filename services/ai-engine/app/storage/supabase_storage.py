@@ -29,3 +29,14 @@ def upload_photo(storage_key: str, data: bytes, content_type: str = "image/jpeg"
     except Exception as e:
         log.error(f"Failed to upload {storage_key}: {e}")
         return None
+
+
+def get_signed_url(storage_key: str, expires_in: int = 3600) -> Optional[str]:
+    """Get a signed URL for a file in Supabase Storage."""
+    try:
+        sb = get_supabase()
+        bucket = get_settings().storage_bucket
+        return sb.storage_signed_url(bucket, storage_key, expires_in)
+    except Exception as e:
+        log.error(f"Failed to get signed URL for {storage_key}: {e}")
+        return None

@@ -66,49 +66,23 @@ class SupabaseClient:
             return bool(obj)
         return obj
 
-    # ── Filter Normalisation ──
-
-    @staticmethod
-    def _normalise_filters(filters: dict) -> dict:
-        """
-        Convert simple key-value filters to PostgREST format.
-        {"gallery_id": "some-uuid"} -> {"gallery_id": "eq.some-uuid"}
-        {"is_culled": False} -> {"is_culled": "eq.false"}
-        {"status": "eq.ready"} -> {"status": "eq.ready"}  (already formatted)
-        """
-        normalised = {}
-        for key, val in filters.items():
-            str_val = str(val)
-            if any(str_val.startswith(op) for op in ("eq.", "neq.", "gt.", "gte.", "lt.", "lte.", "in.", "is.", "like.", "ilike.", "not.")):
-                normalised[key] = str_val
-            else:
-                if isinstance(val, bool):
-                    normalised[key] = f"eq.{str(val).lower()}"
-                elif val is None:
-                    normalised[key] = "is.null"
-                else:
-                    normalised[key] = f"eq.{val}"
-        return normalised
-
     # ── Table Operations ──
 
-    def select(self, table: str, filters: dict | None = None, columns: str = "*", order: str | None = None) -> list[dict]:
-        """Select rows. Filters can be simple {"col": "val"} or PostgREST {"col": "eq.val"}."""
+    def select(self, table: str, columns: str = "*", filters: dict | None = None, order: str | None = None) -> list[dict]:
         params = {"select": columns}
         if filters:
-            params.update(self._normalise_filters(filters))
+            params.update(filters)
         if order:
             params["order"] = order
         r = httpx.get(self._rest_url(table), headers=self.headers, params=params, timeout=30)
         r.raise_for_status()
         return r.json()
 
-    def select_single(self, table: str, filters: dict | None = None, columns: str = "*") -> Optional[dict]:
-        """Select a single row. Returns None if not found."""
+    def select_single(self, table: str, columns: str = "*", filters: dict | None = None) -> Optional[dict]:
         headers = {**self.headers, "Accept": "application/vnd.pgrst.object+json"}
         params = {"select": columns}
         if filters:
-            params.update(self._normalise_filters(filters))
+            params.update(filters)
         r = httpx.get(self._rest_url(table), headers=headers, params=params, timeout=30)
         if r.status_code == 406:
             return None
@@ -121,29 +95,11 @@ class SupabaseClient:
         rows = r.json()
         return rows[0] if rows else None
 
-    def update(self, table: str, id_or_filters, data: dict = None) -> Optional[dict]:
-        """
-        Update rows. Supports two calling conventions:
-          update("photos", "uuid-string", {"status": "edited"})
-          update("photos", {"gallery_id": "eq.xxx"}, {"status": "edited"})
-        """
-        if isinstance(id_or_filters, str):
-            # Convention: update(table, id, data)
-            filters = {"id": f"eq.{id_or_filters}"}
-            update_data = data or {}
-        elif data is not None:
-            # Convention: update(table, filters_or_data, data_or_filters)
-            if any(str(v).startswith(("eq.", "in.", "gt.", "lt.", "neq.", "gte.", "lte.")) for v in id_or_filters.values()):
-                filters = id_or_filters
-                update_data = data
-            else:
-                update_data = id_or_filters
-                filters = data
-        else:
-            raise ValueError("update() requires (table, id, data) or (table, filters, data)")
-
-        params = self._normalise_filters(filters) if filters else {}
-        clean = self._sanitize(update_data)
+    def update(self, table: str, data: dict, filters: dict) -> Optional[dict]:
+        params = {}
+        if filters:
+            params.update(filters)
+        clean = self._sanitize(data)
         r = httpx.patch(self._rest_url(table), headers=self.headers, json=clean, params=params, timeout=30)
         r.raise_for_status()
         rows = r.json()
@@ -177,8 +133,22 @@ class SupabaseClient:
         r = httpx.put(url, headers=headers, content=data, timeout=120)
         return r.status_code in (200, 201)
 
+    def storage_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> Optional[str]:
+        url = self._storage_url(f"/object/sign/{bucket}/{path}")
+        headers = {
+            "apikey": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        r = httpx.post(url, headers=headers, json={"expiresIn": expires_in}, timeout=30)
+        if r.status_code == 200:
+            data = r.json()
+            signed = data.get("signedURL", "")
+            if signed and not signed.startswith("http"):
+                signed = self._storage_url("") + signed
+            return signed
+        return None
 
-# ── Module-level singletons ──
 
 _client: Optional[SupabaseClient] = None
 
@@ -188,21 +158,3 @@ def get_supabase() -> SupabaseClient:
     if _client is None:
         _client = SupabaseClient()
     return _client
-
-
-# Lazy proxies so `from app.config import settings, supabase` works
-# without triggering construction at import time
-class _LazySettings:
-    _instance = None
-    def __getattr__(self, name):
-        if _LazySettings._instance is None:
-            _LazySettings._instance = get_settings()
-        return getattr(_LazySettings._instance, name)
-
-class _LazySupa:
-    def __getattr__(self, name):
-        return getattr(get_supabase(), name)
-
-
-settings = _LazySettings()
-supabase = _LazySupa()
