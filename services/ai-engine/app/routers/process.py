@@ -59,8 +59,8 @@ async def process_gallery(request: ProcessRequest, background_tasks: BackgroundT
 
     # Check for existing processing job for this gallery — reuse it instead of creating a new one
     existing_jobs = sb.select(
-        "processing_jobs", "*",
-        {"gallery_id": f"eq.{request.gallery_id}"},
+        "processing_jobs",
+        filters={"gallery_id": request.gallery_id},
         order="created_at.desc",
     )
 
@@ -147,7 +147,7 @@ async def restyle_photo(request: RestyleRequest):
         sb = get_supabase()
 
         # Get the photo record
-        photo = sb.select_single("photos", "*", {"id": f"eq.{request.photo_id}"})
+        photo = sb.select_single("photos", filters={"id": request.photo_id})
         if not photo:
             return {"error": "Photo not found", "status": "error"}
 
@@ -156,7 +156,7 @@ async def restyle_photo(request: RestyleRequest):
             return {"error": "Photo has no original file", "status": "error"}
 
         # Get the style profile
-        profile = sb.select_single("style_profiles", "*", {"id": f"eq.{request.style_profile_id}"})
+        profile = sb.select_single("style_profiles", filters={"id": request.style_profile_id})
         if not profile:
             return {"error": "Style profile not found", "status": "error"}
 
@@ -231,7 +231,7 @@ async def restyle_photo(request: RestyleRequest):
 async def get_processing_status(job_id: str):
     try:
         sb = get_supabase()
-        job = sb.select_single("processing_jobs", "*", {"id": f"eq.{job_id}"})
+        job = sb.select_single("processing_jobs", filters={"id": job_id})
         if not job:
             return {"error": "Job not found"}
 

@@ -69,7 +69,7 @@ async def run_pipeline(
     # Look up gallery if we need photographer_id / job_id
     if not photographer_id or not job_id:
         try:
-            gallery = supabase.select_single("galleries", {"id": gallery_id}, columns="photographer_id, job_id")
+            gallery = supabase.select_single("galleries", columns="photographer_id, job_id", filters={"id": gallery_id})
             if gallery:
                 photographer_id = photographer_id or gallery.get("photographer_id")
                 job_id = job_id or gallery.get("job_id")
@@ -95,7 +95,7 @@ async def run_pipeline(
     has_style = False
     if style_profile_id:
         try:
-            profile = supabase.select_single("style_profiles", {"id": style_profile_id})
+            profile = supabase.select_single("style_profiles", filters={"id": style_profile_id})
             if profile:
                 mk = profile.get("model_key") or profile.get("model_weights_key")
                 if mk:
@@ -108,7 +108,7 @@ async def run_pipeline(
             logger.warning(f"Could not load style profile: {e}")
 
     # Load photos for this gallery
-    photos = supabase.select("photos", {"gallery_id": gallery_id, "is_culled": False})
+    photos = supabase.select("photos", filters={"gallery_id": gallery_id, "is_culled": False})
     if not photos:
         logger.error(f"No photos found for gallery {gallery_id}")
         await _update_job_status(processing_job_id, "failed", error="No photos found")

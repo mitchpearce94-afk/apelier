@@ -71,7 +71,11 @@ class SupabaseClient:
     def select(self, table: str, columns: str = "*", filters: dict | None = None, order: str | None = None) -> list[dict]:
         params = {"select": columns}
         if filters:
-            params.update(filters)
+            for k, v in filters.items():
+                val = str(v).lower() if isinstance(v, bool) else str(v)
+                if not any(val.startswith(op) for op in ("eq.", "neq.", "gt.", "gte.", "lt.", "lte.", "like.", "ilike.", "is.", "in.", "not.")):
+                    val = f"eq.{val}"
+                params[k] = val
         if order:
             params["order"] = order
         r = httpx.get(self._rest_url(table), headers=self.headers, params=params, timeout=30)
@@ -82,7 +86,11 @@ class SupabaseClient:
         headers = {**self.headers, "Accept": "application/vnd.pgrst.object+json"}
         params = {"select": columns}
         if filters:
-            params.update(filters)
+            for k, v in filters.items():
+                val = str(v).lower() if isinstance(v, bool) else str(v)
+                if not any(val.startswith(op) for op in ("eq.", "neq.", "gt.", "gte.", "lt.", "lte.", "like.", "ilike.", "is.", "in.", "not.")):
+                    val = f"eq.{val}"
+                params[k] = val
         r = httpx.get(self._rest_url(table), headers=headers, params=params, timeout=30)
         if r.status_code == 406:
             return None

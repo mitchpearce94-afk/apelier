@@ -42,7 +42,7 @@ async def restyle_photo(body: dict):
     sb = get_supabase()
 
     # Get style profile
-    profile = sb.select_single("style_profiles", {"id": f"eq.{style_profile_id}"})
+    profile = sb.select_single("style_profiles", filters={"id": style_profile_id})
     if not profile:
         return {"status": "error", "message": "Style profile not found"}
 
@@ -53,7 +53,7 @@ async def restyle_photo(body: dict):
     model_filename = model_key.split("/")[-1]
 
     # Get photo
-    photo = sb.select_single("photos", {"id": f"eq.{photo_id}"})
+    photo = sb.select_single("photos", filters={"id": photo_id})
     if not photo:
         return {"status": "error", "message": "Photo not found"}
 

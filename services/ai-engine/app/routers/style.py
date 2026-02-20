@@ -115,7 +115,7 @@ async def create_style(req: CreateStyleRequest):
 @router.get("/status/{style_profile_id}")
 async def get_training_status(style_profile_id: str):
     """Check training status for a style profile."""
-    profile = supabase.select_single("style_profiles", {"id": style_profile_id})
+    profile = supabase.select_single("style_profiles", filters={"id": style_profile_id})
     if not profile:
         return {"status": "error", "message": "Style profile not found"}
     return {
@@ -128,7 +128,7 @@ async def get_training_status(style_profile_id: str):
 @router.post("/{style_profile_id}/retrain")
 async def retrain_style(style_profile_id: str):
     """Re-train an existing style profile."""
-    profile = supabase.select_single("style_profiles", {"id": style_profile_id})
+    profile = supabase.select_single("style_profiles", filters={"id": style_profile_id})
     if not profile:
         return {"status": "error", "message": "Style profile not found"}
 

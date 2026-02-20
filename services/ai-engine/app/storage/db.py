@@ -50,7 +50,7 @@ def fail_job(job_id: str, error: str):
 def get_gallery_photos(gallery_id: str) -> list[dict]:
     try:
         sb = get_supabase()
-        return sb.select("photos", {"gallery_id": gallery_id}, order="sort_order.asc")
+        return sb.select("photos", filters={"gallery_id": gallery_id}, order="sort_order.asc")
     except Exception as e:
         log.error(f"Failed to fetch photos for gallery {gallery_id}: {e}")
         return []
@@ -87,7 +87,7 @@ def update_job_status(job_id: str, status: str):
 def get_gallery(gallery_id: str) -> Optional[dict]:
     try:
         sb = get_supabase()
-        return sb.select_single("galleries", {"id": gallery_id}, columns="*, job:jobs(id, status)")
+        return sb.select_single("galleries", columns="*, job:jobs(id, status)", filters={"id": gallery_id})
     except Exception as e:
         log.error(f"Failed to fetch gallery {gallery_id}: {e}")
         return None
@@ -106,7 +106,7 @@ def update_gallery(gallery_id: str, **fields):
 def get_style_profile(profile_id: str) -> Optional[dict]:
     try:
         sb = get_supabase()
-        return sb.select_single("style_profiles", {"id": profile_id})
+        return sb.select_single("style_profiles", filters={"id": profile_id})
     except Exception as e:
         log.error(f"Failed to fetch style profile {profile_id}: {e}")
         return None
@@ -120,7 +120,7 @@ def get_photographer_default_style(photographer_id: str) -> Optional[dict]:
         sb = get_supabase()
         profiles = sb.select(
             "style_profiles",
-            {"photographer_id": photographer_id, "status": "ready"},
+            filters={"photographer_id": photographer_id, "status": "ready"},
             order="created_at.desc",
         )
         return profiles[0] if profiles else None

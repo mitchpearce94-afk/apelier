@@ -71,7 +71,7 @@ function PasswordGate({ galleryId, onUnlock, brandColor, businessName, logoUrl }
         <Lock className="w-12 h-12 mx-auto mb-8 text-brand-500/50" strokeWidth={1} />
         <div className="flex items-center justify-center gap-2.5 mb-6">
           {logoUrl ? (
-            <img src={logoUrl} alt={businessName} className="h-8 max-w-[160px] object-contain" />
+            <img src={logoUrl} alt={businessName} className="h-10 max-w-[200px] object-contain" />
           ) : (
             <>
               <ApertureMark className="w-6 h-6" color={brandColor} />
@@ -397,7 +397,7 @@ export default function PublicGalleryPage() {
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 pb-12 sm:pb-16 text-center">
           <div className="flex items-center justify-center gap-2.5 mb-5 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'both' }}>
             {logoUrl ? (
-              <img src={logoUrl} alt={businessName} className="h-7 max-w-[180px] object-contain opacity-80" />
+              <img src={logoUrl} alt={businessName} className="h-12 max-w-[240px] object-contain opacity-90" />
             ) : (
               <>
                 <ApertureMark className="w-5 h-5" color={brandColor} />
