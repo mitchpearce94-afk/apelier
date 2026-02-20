@@ -1,7 +1,7 @@
 # Apelier — Master Document
 
-**Version:** 3.9  
-**Last Updated:** 18 February 2026 (Session 2 — Dashboard open jobs, delivery popup, auto-contract, invoice tabs, empty review cleanup, send-back-to-review, job picker grouping, gold rebrand continued)  
+**Version:** 4.1  
+**Last Updated:** 19 February 2026 (Editing Style rewrite to RAW+edited pairs, multi-style support, signed uploads 50MB, CRM import research, tier system planning, email setup gap identified)  
 **Project Location:** `C:\Users\mitch\OneDrive\Documents\aperture-suite`  
 **GitHub:** `github.com/mitchpearce94-afk/aperture-suite`  
 **Live URL:** Deployed on Vercel (auto-deploys from `main` branch)  
@@ -11,9 +11,9 @@
 
 ---
 
-## 1. What Is Aperture Suite?
+## 1. What Is Apelier?
 
-Aperture Suite is a vertically integrated SaaS platform for photographers that combines CRM/job management (replacing Studio Ninja), client gallery delivery (replacing Pic-Time), and AI-powered photo editing (replacing Aftershoot/Imagen) into a single product.
+Apelier is a vertically integrated SaaS platform for photographers that combines CRM/job management (replacing Studio Ninja), client gallery delivery (replacing Pic-Time), and AI-powered photo editing (replacing Aftershoot/Imagen) into a single product.
 
 **The core promise:** From shutter click to client delivery in under 1 hour, versus the industry average of 4–8 weeks.
 
@@ -31,7 +31,7 @@ This is the complete end-to-end flow. The photographer's only touchpoints are ma
 - **System auto-responds** with a personalised enquiry response email within minutes
 
 ### Stage 2: Quoting
-- System auto-generates a **client-facing quote link** (e.g. `yourbrand.aperturesuite.com/quote/abc123`)
+- System auto-generates a **client-facing quote link** (e.g. `yourbrand.apelier.com.au/quote/abc123`)
 - Client opens the link and sees: photographer's branding, package options with pricing, what's included (images, duration, deliverables), and options to add extras (additional images, prints, etc. — configurable by the photographer in Settings)
 - Client **accepts or declines the quote:**
   - **Accept →** triggers Stage 3 (Booking)
@@ -85,7 +85,7 @@ There are two paths to booking:
 
   **Phase 0 — Analysis:** Scene detection (portrait/landscape/ceremony/reception), face detection, quality scoring (exposure, focus, noise), duplicate grouping, EXIF extraction
 
-  **Phase 1 — Style Application:** Applies photographer's trained style profile (exposure, white balance, contrast, colour grading, shadows, highlights, HSL, tone curve). Trained from 50–200 reference images the photographer uploads (much lower barrier than Imagen's 3,000–5,000 requirement)
+  **Phase 1 — Style Application:** Applies photographer's trained style profile (exposure, white balance, contrast, colour grading, shadows, highlights, HSL, tone curve). Trained from 10–100 RAW + edited pairs the photographer uploads — the AI compares each pair to learn exactly what they change (much lower barrier than Imagen's 3,000–5,000 requirement)
 
   **Phase 2 — Face & Skin Retouching:** Automatic skin smoothing (texture-preserving), blemish/acne removal, stray hair cleanup, red-eye removal, subtle teeth whitening
 
@@ -149,7 +149,7 @@ There are two paths to booking:
 | Hosting (Web) | Vercel | Auto-deploys from GitHub `main` branch |
 | Database | Supabase (PostgreSQL) | Auth, data, RLS, real-time subscriptions |
 | AI Service | Python FastAPI | RAW processing, image analysis, style transfer |
-| AI Hosting | Railway (CPU) / Modal (GPU — future) | AI engine serves on port 8000 |
+| AI Hosting | Railway (CPU) / Modal (GPU — live) | AI engine serves on port 8000, GPU phases on Modal A10G |
 | Storage | Supabase Storage (photos bucket) | Photo storage with RLS, 100MB/file |
 | CDN | Cloudflare R2 | Fast gallery delivery, watermarking |
 | Queue | BullMQ (Redis) | Job queue for AI processing pipeline |
@@ -161,7 +161,7 @@ There are two paths to booking:
 
 ## 4. Database Schema (Supabase PostgreSQL)
 
-**14 tables + 3 new tables + RLS policies per photographer. 15 migrations applied. Storage RLS simplified for uploads.**
+**14 tables + 3 new tables + RLS policies per photographer. 17 migrations applied. Storage RLS simplified for uploads.**
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
@@ -208,6 +208,8 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
 13. `20260215000003_booking_events_slots.sql` — `booking_events` + `booking_slots` tables ✅ Run
 14. `20260215000004_job_booking_slot_link.sql` — `booking_slot_id` FK on jobs ✅ Run
 15. **Manual SQL (15 Feb 2026):** Updated `jobs_status_check` constraint to include `'edited'` status ✅ Run
+16. `20260219000001_style_profiles_update.sql` — Added model_key, training_method, training_status to style_profiles ✅ Run
+17. `20260219000002_images_edited_counter.sql` — Added images_edited_count, billing_period_start/end to photographers + increment_images_edited() RPC ✅ Run
 
 ---
 
@@ -229,7 +231,7 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
   - **AI Processing Pipeline (Python FastAPI):** Fully built and tested. Upload triggers `/api/process` → AI engine runs 6 phases → outputs uploaded to Supabase Storage (`edited/`, `web/`, `thumbs/`). Photo records updated with output keys, quality scores, scene types, face data. Gallery marked `ready`, job marked `ready_for_review`
   - **Processing Queue tab:** Stats cards (processing/queued/completed/total images). Processing cards with 6-phase progress indicator (Analysis → Style → Retouch → Cleanup → Composition → Output). Smooth 3-second polling, no glitching. Phase IDs match AI engine output (`analysis`, `style`, `retouch`, `cleanup`, `composition`, `output`). No mock data — shows empty state when no processing jobs exist
   - **Review Workspace:** Full photo review UI with real photos from Supabase Storage. Grid view with section/status filters. Click photo for before/after comparison (original vs edited) with `object-contain` display (no cropping). Approve/reject individual photos, star ratings, bulk select. "Send to Gallery" button calls server-side API that updates photos/gallery/job/processing_job in one call (bypasses RLS). Auto-navigates back to editing page after send. Optional auto-deliver toggle
-  - **Style profiles:** Create style flow modal with name/description → upload 100-200+ reference images → trains style via AI engine. Training status polling. Backend training endpoint (`/api/style/create`) with histogram-based style learning
+  - **Style profiles:** Multi-style system — create named styles, each trained from 10–100 RAW + edited pairs. Side-by-side drop zones with filename matching (IMG_1234.CR2 ↔ IMG_1234.jpg). Change Style panel in review workspace applies different styles to individual photos via restyle endpoint. Training status polling per style
 - **Galleries:**
   - Dashboard page with grid cards showing cover, status badge, access type icon, photo count
   - Status filters (all/ready/delivered/processing/draft), search
@@ -250,7 +252,7 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
   - **Download buttons work** — calls `/api/gallery-photos?action=download` for signed download URLs, defaults to full-res
   - Gallery expiry check — shows error if expired
   - View count auto-incremented via `increment_gallery_views()` RPC
-  - Footer with "Powered by Aperture Suite"
+  - Footer with "Powered by Apelier"
 - **Email Integration (Resend):**
   - API route at `/api/email` — accepts template name, recipient, and data
   - 5 email templates: gallery_delivery, booking_confirmation, invoice, contract_signing, reminder
@@ -263,7 +265,7 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
   - Packages — name, price, duration, included images, description, deposit toggle + deposit %, active toggle
   - Branding — primary/secondary colours with contrast-aware preview, logo upload, watermark/download toggles
   - Contract Template — preview/edit modes, merge tag click-to-insert, conditional block helpers
-  - Editing Style — upload reference images via server-side route, triggers AI engine training, polls for training status
+  - Editing Style — multi-style support: create named styles (e.g. "Wedding", "B&W", "Film"), each trained from 10–100 RAW + edited pairs with filename matching. Side-by-side drop zones (RAW originals / edited versions). Auto-matching by filename. Pair preview grid. Training status polling. Retrain/delete per style. Change Style panel in review workspace to apply different styles to individual photos
   - Notifications — email toggles, auto follow-up timing, overdue reminders
   - Billing — plan display, Stripe placeholder
 - **Responsive Design:** Full mobile/tablet pass — collapsible sidebar with hamburger menu, sticky header, no horizontal scroll, responsive grids, mobile-optimised modals/slide-overs, horizontal scroll tabs
@@ -273,11 +275,11 @@ This was updated on 15 Feb 2026 to include `edited`. If you ever need to add ano
 - **Workflows:** UI only, email templates exist but workflow triggers not wired to automatic scheduling
 - **Analytics:** Uses Supabase data but some mock calculations
 - **Branding:** Logo upload is local preview only (needs file storage)
-- **Email sending:** Resend API route built. Gallery delivery, booking confirmation, contract signing, and invoice emails all wired to their respective flows. Requires `RESEND_API_KEY` env var to actually send (dev mode logs to console)
+- **Email sending:** Resend API route built. Gallery delivery, booking confirmation, contract signing, and invoice emails all wired to their respective flows. Requires `RESEND_API_KEY` env var to actually send (dev mode logs to console). **⚠️ No Resend account created yet — no domain verification, no API key, zero emails actually send. This is the #1 setup task before beta launch**
 - **Gallery password verification:** Password hash stored but actual verification on client-facing page not fully implemented
 
 ### ❌ Not Yet Built
-- **AI processing on GPU** (Phases 2 & 3 are stubs — skin retouching needs SAM 2/face models, scene cleanup needs inpainting models. Phases 0/1/4/5 are fully working on CPU)
+- **AI processing on GPU** (Phase 1 GPU style transfer via Modal A10G is LIVE — 3D LUT predictor with 5 endpoints. Phases 2 & 3 are stubs — skin retouching needs SAM 2/face models, scene cleanup needs inpainting models. Phases 0/4/5 are fully working on CPU)
 - **Prompt-based per-image editing backend** (chat interface built in review workspace, needs AI inference)
 - **Client-facing quote page** (view packages, add extras, accept/decline — triggers booking flow)
 - **Public contact form** (auto-creates leads from website)
@@ -468,8 +470,8 @@ aperture-suite/
 
 ## 8. Competitive Landscape
 
-| Feature | Aperture Suite | Studio Ninja | Pic-Time | Aftershoot | Imagen |
-|---------|---------------|-------------|----------|-----------|--------|
+| Feature | Apelier | Studio Ninja | Pic-Time | Aftershoot | Imagen |
+|---------|---------|-------------|----------|-----------|--------|
 | CRM & Booking | ✅ | ✅ | ❌ | ❌ | ❌ |
 | AI Photo Editing | ✅ | ❌ | ❌ | ✅ | ✅ |
 | Client Galleries | ✅ | ❌ | ✅ | ❌ | ❌ |
@@ -477,12 +479,12 @@ aperture-suite/
 | Auto Scene Cleanup | ✅ | ❌ | ❌ | ❌ | ❌ |
 | End-to-End Automation | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Print Ordering | ✅ (planned) | ❌ | ✅ | ❌ | ❌ |
-| Combined cost | $39–89/mo | $28–45/mo | $15–58/mo | $15–30/mo | $7+/mo |
+| Combined cost | $39–279/mo | $28–45/mo | $15–58/mo | $15–30/mo | $7+/mo |
 | Separate tools total | — | $68–149/mo combined | — | — | — |
 
 **Studio Ninja weakness:** Acquired by ImageQuix, support quality declined, years of unfulfilled feature requests (bulk email, date-specific workflows). Wide open door for migration.
 
-**AI editing advantage:** Aftershoot requires local processing. Imagen charges $0.05/photo with 3,000–5,000 image training requirement. Aperture Suite: cloud-based, bundled in subscription, only 50–200 reference images to train style.
+**AI editing advantage:** Aftershoot requires local processing. Imagen charges $0.05/photo with 3,000–5,000 image training requirement. Apelier: cloud-based, bundled in subscription, only 10–100 RAW+edited pairs to train style.
 
 ---
 
@@ -541,7 +543,7 @@ aperture-suite/
 
 ### Phase 4 — Composition (CPU — `phase4_composition.py`)
 - **Horizon detection:** Hough line detection, weighted average of horizontal lines
-- **Straightening:** Rotate if angle >0.3° and <5°
+- **Straightening:** Rotate if angle >1.0° and <3.0°
 - **Crop optimisation:** Interest map (edge density + face regions), find crop maximising thirds alignment, only apply if 1-15% trim
 
 ### Phase 5 — QA & Output (CPU — `phase5_output.py`)
@@ -672,12 +674,12 @@ upcoming → in_progress → editing → ready_for_review → edited → deliver
 6. ~~Booking events system~~ ✅ Built
 7. ~~Send to Gallery / Deliver to Client flow~~ ✅ Working end-to-end via server API
 8. Stripe payment integration (deposits, final payments, print orders)
-9. Wire remaining email templates to their flows (booking confirmation, invoice sent, contract signing)
+9. ~~Wire remaining email templates to their flows (booking confirmation, invoice sent, contract signing)~~ ✅ Code wired — **but Resend account not set up (CRITICAL)**
 10. Client-facing quote page (view packages, add extras, accept/decline)
 
 ### Booking Events — Still Needed
 - ~~Booking auto-creates client + job + invoice~~ ✅ Done
-- Booking confirmation email sent on booking
+- ~~Booking confirmation email sent on booking~~ ✅ Code wired (needs Resend setup)
 - Cover image upload for booking event pages
 - Custom questions on booking form
 
@@ -688,7 +690,7 @@ upcoming → in_progress → editing → ready_for_review → edited → deliver
 - ~~Real images in gallery from Supabase Storage~~ ✅ Done (signed URLs)
 - ~~Client-facing gallery shows real images~~ ✅ Done (server-side signed URLs)
 - ~~Download buttons work~~ ✅ Done (full-res default)
-- **Clean up Galleries page tabs:** Reorder to Ready → Delivered → All. Ready galleries show first (current page). Delivered on its own tab so they don't clutter Ready view. Remove Processing filter (not needed). Draft can go under All
+- **Clean up Galleries page tabs:** ~~Reorder to Ready → Delivered → All~~ ✅ Done 18 Feb
 - **Watermarks on client-side gallery page:** Apply photographer's watermark to images shown on `/gallery/[slug]`. Watermark settings already exist in Settings → Branding
 - Gallery password hash verification on client page
 - Print ordering in client-facing gallery
@@ -776,13 +778,16 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 - **Permanent job numbering:** Counter on photographer record, atomic increment, never resets
 - **Invoice numbers tied to jobs:** Always traceable (`INV-0001-DEP` tells you exactly which job and what type)
 - **AI controls per-step:** Photographers choose how aggressive each AI phase is — from "off" to "auto-fix"
-- **Style training from 50–200 images:** Much lower barrier than competitors (Imagen needs 3,000–5,000)
+- **Style training from 10–100 RAW+edited pairs:** Much lower barrier than competitors (Imagen needs 3,000–5,000). Photographer uploads matching RAW + edited JPEGs, AI compares pairs to learn exact edits. Multi-style support with named profiles
 - **One contract template per photographer:** Simpler than a template library — uses conditional blocks
 - **Photographer signature in Settings:** Draw with canvas or upload image. Stored as base64
 - **Client signing via public URL:** `/sign/[token]` route excluded from auth middleware
 - **Lost leads hidden by default:** Visible in list view with a toggle
-- **No mock data in Auto Editor:** Empty states shown when no real data exists — cleaner than fake demo data
-- **Gallery deliver flow:** Two-step: Send to Gallery (from Auto Editor → job becomes "edited") → Deliver to Client (from Galleries page → job becomes "delivered", email sent)
+- **No mock data in Auto Editor:** Empty states shown when no real data exists — cleaner than fake demo data. Mock data fallback fully removed
+- **Gallery deliver flow:** Three-step: Upload creates gallery as `processing` → Pipeline completes (stays `processing`) → Photographer reviews + sends to gallery (`ready`) → Deliver to Client (`delivered`, email sent)
+- **RAW file handling:** Phase 0 decodes RAW once via rawpy, converts to full-res JPEG, uploads web preview + thumbnail. All later phases work with JPEG only
+- **Images edited billing counter:** Stored on photographer record, incremented by pipeline, persists across photo deletions. Resets monthly via billing_period fields
+- **Photo rejection = deletion:** Reject button deletes photo from DB + storage entirely (not soft-delete). Counter already tracked separately
 - **Mitchell prefers Claude.ai workflow:** Tried Claude Code but prefers chatting with Claude.ai and getting files to download + Move-Item commands. Don't suggest Claude Code workflow
 
 ---
@@ -835,22 +840,21 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 
 ### Known Issues (to fix)
 - **Cloud files fail upload:** Files synced via OneDrive/cloud that aren't fully downloaded locally cause `ERR_FAILED` on upload. Only locally-available files work
-- **Large file upload (RAW >4.5MB):** Current upload goes through Next.js API route which has body size limits. Needs direct-to-Supabase upload with signed URLs for large RAW files
-- **Preset name not shown:** XMP preset uploads don't display the preset name (e.g. "Wedding") in the UI — parser extracts it from `<crs:Name>` but frontend doesn't display it
-- **GPU processing speed:** CPU-based style application takes ~97s per photo on Railway. Modal GPU migration is critical priority
+- **DNG/RAW quality:** Internet-sourced DNG files may still look pixelated due to low original quality. Need to test with real camera RAW files (CR2, NEF, ARW) to verify full pipeline
+- **Gallery cover image zoomed:** Cover uses `object-cover` which crops to fill — looks zoomed on portrait-heavy images. Consider `object-contain` or smart crop
+- **Resend email account not set up:** All email code is wired and working (dev mode logs to console), but no Resend account exists. Need: create account, verify apelier.com.au domain, set RESEND_API_KEY + RESEND_FROM_EMAIL in Vercel env vars. Without this, zero emails actually send to clients
 
 ### Next Session Priorities
-1. **GPU neural style transfer via Modal (THE priority):** Build Modal endpoints for 3D LUT prediction. Current CPU processing takes ~97s per photo. Modal A10G GPU target is <2s per photo.
-2. **Multi-style profiles with labels + per-style presets:** Photographers can train multiple named styles (e.g. "Newborn", "Wedding Moody", "Black & White"). Each style profile gets a user-defined label and can optionally have a Lightroom preset (.xmp/.lrtemplate) attached. New `preset_key` column on `style_profiles` table. During Phase 1, pipeline loads the preset for whichever style is selected. Style selector in upload flow lets them pick which style to apply per job.
-3. **Re-edit individual photos with different style in Review:** In "Ready for Review", photographer selects photos → chooses a different learned style from dropdown of saved styles → re-processes just those photos. Replaces edited output for those specific photos. Use case: apply B&W style to select ceremony shots while keeping rest in colour.
-4. **Subscription tier enforcement with monthly edit tracking:** Build tier system (Starter/Pro/Studio) with monthly edit limits. Track `edits_used_this_month` on photographer record or separate `usage` table. Reset monthly. Block processing if limit exceeded with upgrade prompt. Enforce at `/api/process` route level.
-5. **Signed upload URLs for large files (RAW + training images):** New `/api/upload-url` route generates Supabase Storage signed upload URLs via service role. Frontend uploads directly to Supabase (no 4.5MB Vercel limit)
-6. **Client gallery watermarks (IP protection):** Zero watermark logic exists. Need server-side or client-side overlay
+1. **Resend email setup:** Create Resend account, verify apelier.com.au domain (DNS records), set RESEND_API_KEY + RESEND_FROM_EMAIL env vars in Vercel. Without this, zero emails send — blocks all automation
+2. **Subscription tier system (Stripe):** Stripe Checkout for signup, Customer Portal for billing management. Webhook handler for payment events. Tier enforcement middleware (edit limits: Starter 2,000, Pro 10,000, Studio 25,000/month). Usage dashboard in Settings. Free trial flow (14 days, no CC, 50 edits, watermarked galleries). Annual billing (2 months free)
+3. **Marketing homepage + pricing page:** Public-facing site at apelier.com.au. Hero, feature showcase, pricing cards, trial signup CTA. Dark theme matching branding guide
+4. **CRM import tool:** 6-step wizard to migrate from HoneyBook, Dubsado, Studio Ninja, VSCO Workspace, 17hats, Bloom, Sprout Studio, Pixieset, Light Blue. CSV upload with smart field mapping
+5. **Client gallery watermarks:** Server-side or client-side watermark overlay. Enforces free trial limitation
+6. **Test RAW pipeline with real camera files:** Need CR2/NEF/ARW files from actual cameras to verify rawpy decode quality
 7. **Client-facing quote page:** View packages, add extras, accept/decline
-8. **Stripe payment integration:** Invoicing, deposits, print orders
+8. **Stripe payment integration (client invoices):** Deposits, final payments, print orders (separate from subscription billing)
 9. **Workflows backend (cron/event triggers):** UI exists, no backend
 10. **Supabase RLS policies:** Multi-tenant security enforcement
-11. **Client gallery UI/UX overhaul:** Functional now, needs full design pass
 
 ### Session: 18 Feb 2026 — Gallery Fixes, Branding, Email Wiring
 - **FIX #3 — Duplicate galleries per job:** `createGalleryForJob()` now checks `getGalleryForJob()` first and returns existing gallery if one exists. Also auto-generates a URL-safe slug on creation
@@ -873,6 +877,95 @@ All files delivered with PowerShell `Move-Item` commands from Downloads to proje
 3. ~~**Empty review cleanup:** If all images in a "Ready for Review" entry have been rejected and none remain, the review entry should be automatically deleted~~ ✅ Done 18 Feb
 4. ~~**Gallery tiles showing 0 photos / no preview:** Gallery cards display "0 photos" and no thumbnail~~ ✅ Done 18 Feb
 5. ~~**Per-gallery settings & client-facing name:** Clicking into a gallery needs editable settings~~ ✅ Done 18 Feb
+
+### Session: 19 Feb 2026 (Session 2) — Editing Style Rewrite, Multi-Style, Signed Uploads, CRM Research
+
+**Editing Style Rewrite — RAW + Edited Pairs (#37 DONE):**
+- Completely rewrote EditingStyleSection from single-style 100-300 image upload to multi-style RAW+edited pair training
+- Side-by-side drop zones: "RAW Originals" (CR2/NEF/ARW/DNG) and "Edited Versions" (JPEG/PNG/TIFF)
+- Automatic filename matching — `IMG_1234.CR2` pairs with `IMG_1234.jpg` via `getBaseName()` stripping extension
+- Pair matching status showing matched count, unmatched RAWs, unmatched edits
+- Matched pairs preview grid with thumbnails from edited versions
+- Multi-style support: create named styles ("Wedding", "B&W", "Film"), each with own pair set
+- Style list with status badges, retrain/delete buttons, training comments animation
+- NewStyleForm component: name input, pair upload, progress, create via `/api/style`
+- Change Style panel added to review workspace — apply different trained styles to individual photos
+- Added `/api/process` restyle_photo action → `/api/process/restyle` on AI engine
+- Pair count guidance: 10 min, 25 good, 50 ideal, 100 max (variety > volume)
+- RAW files upload at full resolution, edited files resize to 1600px
+- RAW keys stored in `settings.raw_image_keys`, edited in `reference_image_keys` (backward compatible)
+
+**Signed Upload URLs (#40 DONE):**
+- Supabase Storage signed URLs for direct upload, supports up to 50MB (bypasses Vercel 4.5MB body limit)
+
+**CRM Import Research (10 platforms):**
+- Documented exact export methods, CSV column headers, and limitations for: HoneyBook, Dubsado, Studio Ninja, VSCO Workspace (formerly Táve), 17hats, Bloom, Sprout Studio, Pixieset, Light Blue, generic CSV
+- Key finding: most platforms only export contacts easily; jobs/invoices are the lock-in mechanism
+- Designed 6-step import wizard UI with platform-specific instructions and smart field mapping
+
+**Subscription Tier System Planning:**
+- Defined tiers from pitch deck: Starter $39/mo (2,000 edits), Pro $109/mo (10,000), Studio $279/mo (25,000)
+- Planned Stripe integration: Checkout, webhooks, Customer Portal, tier gates, usage tracking
+- Free trial: 14 days, no CC, 50 edits, watermarked galleries
+
+**Email Setup Gap Identified:**
+- All 4 email automations (booking, contract, invoice, gallery) have working code
+- BUT: no Resend account exists, no domain verification, no API key set — zero emails actually send
+- Added as CRITICAL priority #1 for next session
+
+**Files modified:** settings/page.tsx (705 lines changed), review-workspace.tsx (restyle panel), api/process/route.ts (restyle action)
+
+### Session: 19 Feb 2026 (Session 1) — GPU Pipeline Rewrite, RAW Support, Gallery Flow Fixes
+
+**Critical GPU Pipeline Fixes (8 files):**
+- **config.py rewritten:** Lazy `settings` and `supabase` module aliases fix ImportError. `_normalise_filters()` auto-converts simple filters to PostgREST format. `update()` accepts `(table, id, data)` directly. `_sanitize()` handles numpy types
+- **orchestrator.py complete rewrite (500+ lines):** Calls actual phase functions instead of non-existent `run_phase0/4/5()`. Photo state accumulator tracks `ai_edits`, `quality_score`, `face_data` across all 6 phases. Proper `asyncio` for Modal calls. Real-time progress updates to processing_jobs
+- **storage/db.py:** All calls updated to match new config API signatures (was causing 400/406 errors)
+- **process.py router:** Fixed `run_pipeline()` call signature, proper async handling in background thread
+- **style.py router:** Fixed double-prefix routes, added `/create` endpoint
+- **main.py:** Added `/api/process/restyle` endpoint for single-photo restyle
+- **Migration 20260219000001:** Added `model_key`, `training_method`, `training_status` etc. to style_profiles
+
+**Phase 0 — 400 Bad Request Fix:**
+- Root cause: `quality_score` was numpy float (e.g. 72.5) sent to INTEGER column with CHECK constraint
+- Fix: Cast to `int(round())`, sanitise face_data bbox values to native Python types, clean non-serialisable EXIF data
+
+**RAW File Support (DNG, CR2, CR3, NEF, ARW + 15 more formats):**
+- Added `decode_raw()` using rawpy for full-resolution RAW processing (tested: 7040×4688 DNG = 33MP)
+- Phase 0 decodes RAW once, converts to full-res JPEG, uploads as `edited_key`, generates web preview (2048px) and thumbnail (400px)
+- All later phases work with JPEG — no re-downloading/re-decoding the 28MB DNG
+- Frontend `PhotoImage` component detects RAW extensions and uses `web_url` for Original panel (browsers can't render DNG)
+
+**Gallery Flow Fixes:**
+- Gallery created as `processing` status (was `ready` — caused premature appearance on Galleries page)
+- Pipeline sets gallery to `processing` on completion (not `ready` — photographer must explicitly deliver)
+- `getGalleries()` only shows `ready`/`delivered` status galleries
+- `getGalleryPhotos()` now filters `is_culled = false`
+- Reject button now **deletes** photo from DB + storage (was only setting `is_culled: true`)
+- New `/api/photos` DELETE endpoint for photo deletion with storage cleanup
+- Mock data fallback removed — no more placeholder photos flashing when all rejected
+
+**Composition Fixes:**
+- Horizon straightening threshold raised from 0.3° to 1.0° minimum (below 1° is noise/false positive)
+- Max angle reduced from 5.0° to 3.0° (less aggressive)
+- Border blur fixed: changed from `BORDER_REPLICATE` to `BORDER_CONSTANT` + proper inscribed rectangle crop
+
+**Images Edited Counter:**
+- Added `images_edited_count`, `billing_period_start/end` columns to photographers table (migration 20260219000002)
+- `increment_images_edited()` RPC function with auto-reset on new billing period
+- Orchestrator increments counter via direct update after pipeline completion
+- Dashboard + editing page both read from `photographer.images_edited_count` (persists across job deletions)
+- Previous approach (counting processing_jobs) broke because jobs get deleted on "Send to Gallery"
+
+**Password Validation on Gallery Delivery:**
+- Both review workspace "Send to Gallery" and gallery detail "Deliver" buttons check `access_type === 'password'` and block delivery if no password set
+- Public galleries skip the check
+
+**Gold Rebrand Completion:**
+- Settings page: 26 indigo references → amber
+- Review workspace: 23 indigo references → amber (done in earlier fix)
+
+**Files modified this session:** config.py, orchestrator.py, db.py, process.py, style.py, main.py, phase0_analysis.py, phase4_composition.py, phase5_output.py, queries.ts, review-workspace.tsx, gallery-detail.tsx, editing/page.tsx, dashboard/page.tsx, settings/page.tsx, api/photos/route.ts, api/process/route.ts, 2 migrations
 
 ### Session: 18 Feb 2026 (Evening) — Dashboard, Contracts, Invoices, Review Flow
 - **Dashboard open jobs:** Stat tile now only counts jobs not in delivered/completed/canceled status

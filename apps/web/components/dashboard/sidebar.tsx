@@ -101,12 +101,12 @@ function NavContent({ collapsed, onLinkClick, showClose, onClose }: {
                     onClick={onLinkClick}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150',
-                      isActive ? 'bg-indigo-500/10 text-indigo-400' : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]',
+                      isActive ? 'bg-brand-500/10 text-brand-400' : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]',
                       collapsed && 'justify-center px-0'
                     )}
                     title={collapsed ? item.name : undefined}
                   >
-                    <item.icon className={cn('w-[18px] h-[18px] flex-shrink-0', isActive ? 'text-indigo-400' : 'text-slate-500')} />
+                    <item.icon className={cn('w-[18px] h-[18px] flex-shrink-0', isActive ? 'text-brand-400' : 'text-slate-500')} />
                     {!collapsed && <span>{item.name}</span>}
                   </Link>
                 );
