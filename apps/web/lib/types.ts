@@ -12,15 +12,25 @@ export interface Photographer {
   name: string;
   business_name?: string;
   phone?: string;
+  website?: string;
+  instagram?: string;
+  abn?: string;
   address?: Address;
   brand_settings: BrandSettings;
   subscription_tier: SubscriptionTier;
   subscription_status: SubscriptionStatus;
   stripe_customer_id?: string;
   timezone: string;
+  currency?: string;
   contract_template?: string;
   signature_image?: string;
   next_job_number: number;
+  notification_settings?: NotificationSettings;
+  gallery_default_expiry_days?: number;
+  gallery_default_access_type?: string;
+  gallery_default_download_full_res?: boolean;
+  gallery_default_download_web?: boolean;
+  gallery_default_watermark?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +50,16 @@ export interface BrandSettings {
   font_heading?: string;
   font_body?: string;
   custom_domain?: string;
+}
+
+export interface NotificationSettings {
+  email_new_lead?: boolean;
+  email_booking_confirmed?: boolean;
+  email_payment_received?: boolean;
+  email_gallery_viewed?: boolean;
+  email_contract_signed?: boolean;
+  auto_followup_days?: number;
+  auto_reminder_unpaid?: boolean;
 }
 
 // ============================================

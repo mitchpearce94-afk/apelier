@@ -32,13 +32,13 @@ interface PackageItem {
   deposit_percent: number;
 }
 
-type SettingsTab = 'profile' | 'packages' | 'contract' | 'branding' | 'editing_style' | 'notifications' | 'billing';
+type SettingsTab = 'profile' | 'packages' | 'contract' | 'gallery_settings' | 'editing_style' | 'notifications' | 'billing';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: 'profile', label: 'Business Profile', icon: User },
   { id: 'packages', label: 'Packages', icon: Package },
   { id: 'contract', label: 'Contract Template', icon: FileSignature },
-  { id: 'branding', label: 'Branding', icon: Palette },
+  { id: 'gallery_settings', label: 'Gallery Settings', icon: Palette },
   { id: 'editing_style', label: 'Editing Style', icon: Wand2 },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'billing', label: 'Billing', icon: CreditCard },
@@ -101,10 +101,8 @@ export default function SettingsPage() {
   const [packages, setPackages] = useState<PackageItem[]>([]);
   const [editingPackage, setEditingPackage] = useState<PackageItem | null>(null);
 
-  // Branding
-  const [brandForm, setBrandForm] = useState({
-    primary_color: '#6366f1',
-    secondary_color: '#8b5cf6',
+  // Gallery Settings (was Branding)
+  const [galleryForm, setGalleryForm] = useState({
     gallery_watermark: true,
     gallery_download: true,
     gallery_default_expiry_days: 30,
@@ -113,7 +111,9 @@ export default function SettingsPage() {
     gallery_default_download_web: true,
     custom_domain: '',
   });
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // Notifications
   const [notifForm, setNotifForm] = useState({
@@ -149,22 +149,41 @@ export default function SettingsPage() {
         email: p.email || '',
         phone: p.phone || '',
         timezone: p.timezone || 'Australia/Brisbane',
-        currency: 'AUD',
-        website: '',
-        instagram: '',
-        abn: '',
+        currency: (p as any).currency || 'AUD',
+        website: (p as any).website || '',
+        instagram: (p as any).instagram || '',
+        abn: (p as any).abn || '',
         address_street: p.address?.street || '',
         address_city: p.address?.city || '',
         address_state: p.address?.state || '',
         address_zip: p.address?.zip || '',
       });
-      if (p.brand_settings) {
-        setBrandForm((prev) => ({
-          ...prev,
-          primary_color: p.brand_settings.primary_color || '#6366f1',
-          secondary_color: p.brand_settings.secondary_color || '#8b5cf6',
-          custom_domain: p.brand_settings.custom_domain || '',
-        }));
+      // Load logo preview from brand_settings
+      if (p.brand_settings?.logo_url) {
+        setLogoPreview(p.brand_settings.logo_url);
+      }
+      // Load gallery default settings
+      setGalleryForm((prev) => ({
+        ...prev,
+        gallery_default_expiry_days: (p as any).gallery_default_expiry_days ?? 30,
+        gallery_default_access_type: (p as any).gallery_default_access_type || 'password',
+        gallery_default_download_full_res: (p as any).gallery_default_download_full_res ?? true,
+        gallery_default_download_web: (p as any).gallery_default_download_web ?? true,
+        gallery_watermark: (p as any).gallery_default_watermark ?? true,
+        custom_domain: p.brand_settings?.custom_domain || '',
+      }));
+      // Load notification settings
+      const ns = (p as any).notification_settings;
+      if (ns) {
+        setNotifForm({
+          email_new_lead: ns.email_new_lead ?? true,
+          email_booking_confirmed: ns.email_booking_confirmed ?? true,
+          email_payment_received: ns.email_payment_received ?? true,
+          email_gallery_viewed: ns.email_gallery_viewed ?? true,
+          email_contract_signed: ns.email_contract_signed ?? true,
+          auto_followup_days: String(ns.auto_followup_days ?? 3),
+          auto_reminder_unpaid: ns.auto_reminder_unpaid ?? true,
+        });
       }
       // Load contract template
       setContractTemplate(p.contract_template || DEFAULT_CONTRACT);
@@ -178,6 +197,44 @@ export default function SettingsPage() {
     if (!photographer) return;
     setSaving(true);
     const sb = createSupabaseClient();
+
+    // Upload logo if a new file was selected
+    let logoUrl = logoPreview;
+    if (logoFile) {
+      setLogoUploading(true);
+      try {
+        const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+        const key = `${photographer.id}/branding/logo_${Date.now()}.${ext}`;
+        const { error: uploadErr } = await sb.storage
+          .from('photos')
+          .upload(key, logoFile, { contentType: logoFile.type, upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = sb.storage.from('photos').getPublicUrl(key);
+          if (urlData?.publicUrl) {
+            logoUrl = urlData.publicUrl;
+          } else {
+            // Bucket is private — use signed URL
+            const { data: signedData } = await sb.storage.from('photos').createSignedUrl(key, 60 * 60 * 24 * 365); // 1 year
+            if (signedData?.signedUrl) logoUrl = signedData.signedUrl;
+          }
+        }
+      } catch (err) {
+        console.error('Logo upload error:', err);
+      }
+      setLogoUploading(false);
+      setLogoFile(null);
+    }
+
+    // Build updated brand_settings preserving existing fields
+    const updatedBrandSettings = {
+      ...(photographer.brand_settings || {}),
+      logo_url: logoUrl || undefined,
+    };
+    // If logo was removed
+    if (!logoPreview && !logoFile) {
+      updatedBrandSettings.logo_url = undefined;
+    }
+
     const { error } = await sb
       .from('photographers')
       .update({
@@ -185,17 +242,23 @@ export default function SettingsPage() {
         business_name: profileForm.business_name,
         phone: profileForm.phone,
         timezone: profileForm.timezone,
+        currency: profileForm.currency,
+        website: profileForm.website,
+        instagram: profileForm.instagram,
+        abn: profileForm.abn,
         address: {
           street: profileForm.address_street,
           city: profileForm.address_city,
           state: profileForm.address_state,
           zip: profileForm.address_zip,
         },
+        brand_settings: updatedBrandSettings,
       })
       .eq('id', photographer.id);
 
     setSaving(false);
     if (!error) {
+      setLogoPreview(logoUrl);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -410,8 +473,50 @@ export default function SettingsPage() {
                 </div>
               </Section>
 
+              <Section title="Business Logo" description="Used on galleries, invoices, contracts, and emails.">
+                <div className="flex items-start gap-6">
+                  <div className="w-24 h-24 rounded-xl border border-white/[0.06] bg-[#0a0a12] flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-2" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-slate-700" />
+                    )}
+                  </div>
+                  <div className="space-y-3 pt-1">
+                    <p className="text-xs text-slate-500">PNG or SVG, recommended 500×500px or larger. Transparent background works best.</p>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/png,image/svg+xml,image/jpeg"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setLogoFile(file);
+                              const reader = new FileReader();
+                              reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 border border-white/[0.08] font-medium transition-colors cursor-pointer">
+                          <Upload className="w-3 h-3" />{logoPreview ? 'Change Logo' : 'Upload Logo'}
+                        </span>
+                      </label>
+                      {logoPreview && (
+                        <Button size="sm" variant="ghost" onClick={() => { setLogoPreview(null); setLogoFile(null); }} className="text-red-400 hover:text-red-300">
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                    {logoUploading && <p className="text-[10px] text-amber-400">Uploading...</p>}
+                  </div>
+                </div>
+              </Section>
+
               <div className="flex items-center gap-3 pt-2">
-                <Button onClick={saveProfile} disabled={saving}>
+                <Button onClick={saveProfile} disabled={saving || logoUploading}>
                   {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : saving ? 'Saving...' : <><Save className="w-3.5 h-3.5" />Save Changes</>}
                 </Button>
               </div>
@@ -640,98 +745,13 @@ export default function SettingsPage() {
           )}
 
           {/* ==================== BRANDING ==================== */}
-          {activeTab === 'branding' && (
+          {activeTab === 'gallery_settings' && (
             <div className="space-y-6">
-              <Section title="Logo" description="Your business logo. Used on galleries, invoices, contracts, and emails.">
-                <div className="flex items-start gap-6">
-                  <div className="w-24 h-24 rounded-xl border border-white/[0.06] bg-[#0a0a12] flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {logoPreview ? (
-                      <img src={logoPreview} alt="Logo" className="w-full h-full object-contain p-2" />
-                    ) : (
-                      <ImageIcon className="w-8 h-8 text-slate-700" />
-                    )}
-                  </div>
-                  <div className="space-y-3 pt-1">
-                    <p className="text-xs text-slate-500">PNG or SVG, recommended 500×500px or larger. Transparent background works best.</p>
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/png,image/svg+xml,image/jpeg"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                        <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 border border-white/[0.08] font-medium transition-colors cursor-pointer">
-                          <Upload className="w-3 h-3" />Upload Logo
-                        </span>
-                      </label>
-                      {logoPreview && (
-                        <Button size="sm" variant="ghost" onClick={() => setLogoPreview(null)} className="text-red-400 hover:text-red-300">
-                          Remove
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Section>
-
-              <Section title="Brand Colours" description="Used on client-facing galleries, invoices, and emails.">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">Primary Colour</label>
-                    <div className="flex items-center gap-3">
-                      <input type="color" value={brandForm.primary_color} onChange={(e) => setBrandForm({ ...brandForm, primary_color: e.target.value })} className="w-10 h-10 rounded-lg border border-white/[0.08] bg-transparent cursor-pointer" />
-                      <Input value={brandForm.primary_color} onChange={(e) => setBrandForm({ ...brandForm, primary_color: e.target.value })} className="flex-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-400 mb-1.5">Secondary Colour</label>
-                    <div className="flex items-center gap-3">
-                      <input type="color" value={brandForm.secondary_color} onChange={(e) => setBrandForm({ ...brandForm, secondary_color: e.target.value })} className="w-10 h-10 rounded-lg border border-white/[0.08] bg-transparent cursor-pointer" />
-                      <Input value={brandForm.secondary_color} onChange={(e) => setBrandForm({ ...brandForm, secondary_color: e.target.value })} className="flex-1" />
-                    </div>
-                  </div>
-                </div>
-                {/* Preview with contrast-aware text */}
-                <div className="mt-4 p-4 rounded-xl border border-white/[0.06] bg-[#0a0a12]">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 mb-3">Preview</p>
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="h-8 px-4 rounded-lg flex items-center text-xs font-medium"
-                      style={{ backgroundColor: brandForm.primary_color, color: getContrastColor(brandForm.primary_color) }}
-                    >
-                      Book Now
-                    </div>
-                    <div
-                      className="h-8 px-4 rounded-lg flex items-center text-xs font-medium"
-                      style={{ backgroundColor: brandForm.secondary_color, color: getContrastColor(brandForm.secondary_color) }}
-                    >
-                      View Gallery
-                    </div>
-                  </div>
-                  {/* Gallery header preview */}
-                  <div className="mt-4 p-3 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                    <div className="flex items-center gap-2 mb-2">
-                      {logoPreview && <img src={logoPreview} alt="" className="w-6 h-6 object-contain" />}
-                      <span className="text-xs font-semibold text-white">{profileForm.business_name || 'Your Business'}</span>
-                    </div>
-                    <div className="h-1 w-16 rounded-full" style={{ backgroundColor: brandForm.primary_color }} />
-                  </div>
-                </div>
-              </Section>
-
-              <Section title="Gallery Settings" description="Defaults for new client galleries.">
+              <Section title="Gallery Defaults" description="Default settings for new client galleries. Can be overridden per gallery.">
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[11px] text-slate-500 mb-1">Default Expiry</label>
-                    <select value={brandForm.gallery_default_expiry_days} onChange={(e) => setBrandForm({ ...brandForm, gallery_default_expiry_days: Number(e.target.value) })}
+                    <select value={galleryForm.gallery_default_expiry_days} onChange={(e) => setGalleryForm({ ...galleryForm, gallery_default_expiry_days: Number(e.target.value) })}
                       className="w-full text-xs bg-[#12121e] border border-white/[0.08] rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-indigo-500/50"
                       style={{ colorScheme: 'dark' }}>
                       <option value={7}>7 days</option>
@@ -747,26 +767,46 @@ export default function SettingsPage() {
                     <label className="block text-[11px] text-slate-500 mb-1">Default Access Type</label>
                     <div className="grid grid-cols-3 gap-1.5">
                       {(['public', 'password', 'email'] as const).map((type) => (
-                        <button key={type} onClick={() => setBrandForm({ ...brandForm, gallery_default_access_type: type })}
+                        <button key={type} onClick={() => setGalleryForm({ ...galleryForm, gallery_default_access_type: type })}
                           className={`px-2 py-1.5 text-[11px] rounded-lg border capitalize transition-all ${
-                            brandForm.gallery_default_access_type === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
+                            galleryForm.gallery_default_access_type === type ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-300' : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
                           }`}>{type}</button>
                       ))}
                     </div>
                   </div>
-                  <ToggleRow label="Show watermark on preview images" checked={brandForm.gallery_watermark} onChange={(v) => setBrandForm({ ...brandForm, gallery_watermark: v })} />
-                  <ToggleRow label="Allow full resolution downloads" checked={brandForm.gallery_default_download_full_res} onChange={(v) => setBrandForm({ ...brandForm, gallery_default_download_full_res: v })} />
-                  <ToggleRow label="Allow web-size downloads" checked={brandForm.gallery_default_download_web} onChange={(v) => setBrandForm({ ...brandForm, gallery_default_download_web: v })} />
+                  <ToggleRow label="Show watermark on preview images" checked={galleryForm.gallery_watermark} onChange={(v) => setGalleryForm({ ...galleryForm, gallery_watermark: v })} />
+                  <ToggleRow label="Allow full resolution downloads" checked={galleryForm.gallery_default_download_full_res} onChange={(v) => setGalleryForm({ ...galleryForm, gallery_default_download_full_res: v })} />
+                  <ToggleRow label="Allow web-size downloads" checked={galleryForm.gallery_default_download_web} onChange={(v) => setGalleryForm({ ...galleryForm, gallery_default_download_web: v })} />
                 </div>
               </Section>
 
               <Section title="Custom Domain" description="Use your own domain for client galleries (e.g. gallery.yourbusiness.com). Requires Pro plan.">
-                <Input value={brandForm.custom_domain} onChange={(e) => setBrandForm({ ...brandForm, custom_domain: e.target.value })} placeholder="gallery.yourbusiness.com" disabled />
+                <Input value={galleryForm.custom_domain} onChange={(e) => setGalleryForm({ ...galleryForm, custom_domain: e.target.value })} placeholder="gallery.yourbusiness.com" disabled />
                 <p className="text-xs text-slate-600">Coming soon — available on Pro plan</p>
               </Section>
 
-              <Button onClick={() => { /* TODO: save to Supabase */ setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
-                {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : <><Save className="w-3.5 h-3.5" />Save Branding</>}
+              <Button onClick={async () => {
+                if (!photographer) return;
+                setSaving(true);
+                const sb = createSupabaseClient();
+                const { error } = await sb
+                  .from('photographers')
+                  .update({
+                    gallery_default_expiry_days: galleryForm.gallery_default_expiry_days,
+                    gallery_default_access_type: galleryForm.gallery_default_access_type,
+                    gallery_default_download_full_res: galleryForm.gallery_default_download_full_res,
+                    gallery_default_download_web: galleryForm.gallery_default_download_web,
+                    gallery_default_watermark: galleryForm.gallery_watermark,
+                    brand_settings: {
+                      ...(photographer.brand_settings || {}),
+                      custom_domain: galleryForm.custom_domain || undefined,
+                    },
+                  })
+                  .eq('id', photographer.id);
+                setSaving(false);
+                if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+              }} disabled={saving}>
+                {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : saving ? 'Saving...' : <><Save className="w-3.5 h-3.5" />Save Gallery Settings</>}
               </Button>
             </div>
           )}
@@ -791,8 +831,28 @@ export default function SettingsPage() {
                 <ToggleRow label="Send payment reminders for overdue invoices" checked={notifForm.auto_reminder_unpaid} onChange={(v) => setNotifForm({ ...notifForm, auto_reminder_unpaid: v })} />
               </Section>
 
-              <Button onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
-                {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : <><Save className="w-3.5 h-3.5" />Save Notifications</>}
+              <Button onClick={async () => {
+                if (!photographer) return;
+                setSaving(true);
+                const sb = createSupabaseClient();
+                const { error } = await sb
+                  .from('photographers')
+                  .update({
+                    notification_settings: {
+                      email_new_lead: notifForm.email_new_lead,
+                      email_booking_confirmed: notifForm.email_booking_confirmed,
+                      email_payment_received: notifForm.email_payment_received,
+                      email_gallery_viewed: notifForm.email_gallery_viewed,
+                      email_contract_signed: notifForm.email_contract_signed,
+                      auto_followup_days: Number(notifForm.auto_followup_days) || 3,
+                      auto_reminder_unpaid: notifForm.auto_reminder_unpaid,
+                    },
+                  })
+                  .eq('id', photographer.id);
+                setSaving(false);
+                if (!error) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+              }} disabled={saving}>
+                {saved ? <><Check className="w-3.5 h-3.5" />Saved</> : saving ? 'Saving...' : <><Save className="w-3.5 h-3.5" />Save Notifications</>}
               </Button>
             </div>
           )}
@@ -1523,15 +1583,6 @@ function NewStyleForm({ photographerId, onComplete, onCancel }: {
 // ============================================
 // Helper Functions
 // ============================================
-
-function getContrastColor(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  // Relative luminance formula
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5 ? '#000000' : '#ffffff';
-}
 
 // ============================================
 // Helper Components
