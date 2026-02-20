@@ -45,6 +45,7 @@ export interface Address {
 
 export interface BrandSettings {
   logo_url?: string;
+  logo_key?: string;
   primary_color?: string;
   secondary_color?: string;
   font_heading?: string;

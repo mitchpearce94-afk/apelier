@@ -158,9 +158,14 @@ export default function SettingsPage() {
         address_state: p.address?.state || '',
         address_zip: p.address?.zip || '',
       });
-      // Load logo preview from brand_settings
-      if (p.brand_settings?.logo_url) {
-        setLogoPreview(p.brand_settings.logo_url);
+      // Load logo — generate signed URL from stored key
+      const logoKey = (p.brand_settings as any)?.logo_key;
+      if (logoKey) {
+        try {
+          const sb = createSupabaseClient();
+          const { data: signedData } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          if (signedData?.signedUrl) setLogoPreview(signedData.signedUrl);
+        } catch {}
       }
       // Load gallery default settings
       setGalleryForm((prev) => ({
@@ -199,24 +204,23 @@ export default function SettingsPage() {
     const sb = createSupabaseClient();
 
     // Upload logo if a new file was selected
-    let logoUrl = logoPreview;
+    let logoKey = (photographer.brand_settings as any)?.logo_key || null;
     if (logoFile) {
       setLogoUploading(true);
       try {
         const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
-        const key = `${photographer.id}/branding/logo_${Date.now()}.${ext}`;
+        const newKey = `${photographer.id}/branding/logo_${Date.now()}.${ext}`;
         const { error: uploadErr } = await sb.storage
           .from('photos')
-          .upload(key, logoFile, { contentType: logoFile.type, upsert: true });
-        if (!uploadErr) {
-          const { data: urlData } = sb.storage.from('photos').getPublicUrl(key);
-          if (urlData?.publicUrl) {
-            logoUrl = urlData.publicUrl;
-          } else {
-            // Bucket is private — use signed URL
-            const { data: signedData } = await sb.storage.from('photos').createSignedUrl(key, 60 * 60 * 24 * 365); // 1 year
-            if (signedData?.signedUrl) logoUrl = signedData.signedUrl;
+          .upload(newKey, logoFile, { contentType: logoFile.type, upsert: true });
+        if (uploadErr) {
+          console.error('Logo upload error:', uploadErr);
+        } else {
+          // Delete old logo if exists
+          if (logoKey) {
+            await sb.storage.from('photos').remove([logoKey]);
           }
+          logoKey = newKey;
         }
       } catch (err) {
         console.error('Logo upload error:', err);
@@ -225,15 +229,20 @@ export default function SettingsPage() {
       setLogoFile(null);
     }
 
+    // If logo was removed, delete from storage and clear key
+    if (!logoPreview && !logoFile) {
+      if (logoKey) {
+        await sb.storage.from('photos').remove([logoKey]);
+      }
+      logoKey = null;
+    }
+
     // Build updated brand_settings preserving existing fields
     const updatedBrandSettings = {
       ...(photographer.brand_settings || {}),
-      logo_url: logoUrl || undefined,
+      logo_key: logoKey || undefined,
+      logo_url: undefined, // Remove old logo_url field if present
     };
-    // If logo was removed
-    if (!logoPreview && !logoFile) {
-      updatedBrandSettings.logo_url = undefined;
-    }
 
     const { error } = await sb
       .from('photographers')
@@ -258,7 +267,15 @@ export default function SettingsPage() {
 
     setSaving(false);
     if (!error) {
-      setLogoPreview(logoUrl);
+      // Refresh logo preview with a fresh signed URL
+      if (logoKey) {
+        try {
+          const { data: signedData } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          if (signedData?.signedUrl) setLogoPreview(signedData.signedUrl);
+        } catch {}
+      }
+      // Update photographer in state so subsequent saves have correct brand_settings
+      setPhotographer((prev) => prev ? { ...prev, brand_settings: updatedBrandSettings as any } : null);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
