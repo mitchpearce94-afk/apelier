@@ -164,9 +164,12 @@ export default function SettingsPage() {
       if (logoKey) {
         try {
           const sb = createSupabaseClient();
-          const { data: signedData } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          const { data: signedData, error: signErr } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          if (signErr) console.error('Logo signed URL error on load:', signErr);
           if (signedData?.signedUrl) setLogoPreview(signedData.signedUrl);
-        } catch {}
+        } catch (e) {
+          console.error('Logo load error:', e);
+        }
       }
       // Load gallery default settings
       setGalleryForm((prev) => ({
@@ -211,27 +214,38 @@ export default function SettingsPage() {
       setLogoUploading(true);
       const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
       const newKey = `${photographer.id}/branding/logo_${Date.now()}.${ext}`;
-      const { error: uploadErr } = await sb.storage
-        .from('photos')
-        .upload(newKey, logoFile, { contentType: logoFile.type, upsert: true });
-      if (uploadErr) {
-        console.error('Logo upload error:', uploadErr);
-        setSaveError(`Logo upload failed: ${uploadErr.message}`);
-      } else {
-        // Delete old logo if it exists
-        if (logoKey) {
-          await sb.storage.from('photos').remove([logoKey]);
+      
+      // Use the /api/upload route (same as style pair uploads)
+      const formData = new FormData();
+      formData.append('file', logoFile);
+      formData.append('storageKey', newKey);
+      
+      try {
+        const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+        const uploadResult = await uploadRes.json();
+        
+        if (!uploadRes.ok || uploadResult.error) {
+          console.error('Logo upload failed:', uploadResult);
+          setSaveError(`Logo upload failed: ${uploadResult.error || 'Unknown error'}`);
+        } else {
+          // Delete old logo if it exists (non-blocking, don't fail save)
+          if (logoKey) {
+            try { await sb.storage.from('photos').remove([logoKey]); } catch {}
+          }
+          logoKey = uploadResult.storageKey || newKey;
         }
-        logoKey = newKey;
+      } catch (err: any) {
+        console.error('Logo upload error:', err);
+        setSaveError(`Logo upload failed: ${err?.message || err}`);
       }
       setLogoUploading(false);
       setLogoFile(null);
     }
 
-    // If logo was removed, delete from storage and clear key
+    // If logo was removed, delete from storage (non-blocking) and clear key
     if (!logoPreview && !logoFile) {
       if (logoKey) {
-        await sb.storage.from('photos').remove([logoKey]);
+        try { await sb.storage.from('photos').remove([logoKey]); } catch {}
       }
       logoKey = null;
     }
@@ -310,9 +324,12 @@ export default function SettingsPage() {
     if (!error || error?.code === '42703') {
       if (logoKey) {
         try {
-          const { data: signedData } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          const { data: signedData, error: signErr } = await sb.storage.from('photos').createSignedUrl(logoKey, 3600);
+          if (signErr) console.error('Signed URL error:', signErr);
           if (signedData?.signedUrl) setLogoPreview(signedData.signedUrl);
-        } catch {}
+        } catch (e) {
+          console.error('Signed URL error:', e);
+        }
       }
       setPhotographer((prev) => prev ? { ...prev, brand_settings: updatedBrandSettings as any } : null);
       setSaved(true);
