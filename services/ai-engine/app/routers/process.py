@@ -1,6 +1,7 @@
 """
 Processing API routes — trigger and monitor gallery processing.
 """
+import asyncio
 import logging
 from threading import Thread
 from fastapi import APIRouter, BackgroundTasks
@@ -100,13 +101,13 @@ async def process_gallery(request: ProcessRequest, background_tasks: BackgroundT
 
     def run_in_thread():
         try:
-            run_pipeline(
+            asyncio.run(run_pipeline(
                 processing_job_id=job_id,
                 gallery_id=request.gallery_id,
                 style_profile_id=request.style_profile_id,
                 settings_override=request.settings,
                 included_images=request.included_images,
-            )
+            ))
         except Exception as e:
             log.error(f"Pipeline thread error: {e}")
 

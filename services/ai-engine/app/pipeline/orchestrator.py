@@ -58,6 +58,8 @@ async def run_pipeline(
     photographer_id: Optional[str] = None,
     job_id: Optional[str] = None,
     style_profile_id: Optional[str] = None,
+    settings_override: Optional[dict] = None,
+    included_images: Optional[list[str]] = None,
 ):
     """
     Run the full 6-phase AI pipeline for a gallery.
