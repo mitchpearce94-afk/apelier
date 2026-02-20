@@ -19,7 +19,8 @@ type GalleryData = {
 };
 type BrandData = {
   business_name?: string;
-  brand_settings: { primary_color?: string; secondary_color?: string; logo_url?: string };
+  brand_settings: { primary_color?: string; secondary_color?: string; logo_url?: string; logo_key?: string };
+  logo_url?: string | null;
 };
 
 /* ─── Apelier Aperture Mark ─── */
@@ -42,8 +43,8 @@ function ApertureMark({ className = 'w-5 h-5', color = '#c47d4a' }: { className?
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /* PASSWORD GATE                                                              */
 /* ═══════════════════════════════════════════════════════════════════════════ */
-function PasswordGate({ galleryId, onUnlock, brandColor, businessName }: {
-  galleryId: string; onUnlock: () => void; brandColor: string; businessName: string;
+function PasswordGate({ galleryId, onUnlock, brandColor, businessName, logoUrl }: {
+  galleryId: string; onUnlock: () => void; brandColor: string; businessName: string; logoUrl: string | null;
 }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
@@ -69,8 +70,14 @@ function PasswordGate({ galleryId, onUnlock, brandColor, businessName }: {
       <div className="w-full max-w-sm text-center">
         <Lock className="w-12 h-12 mx-auto mb-8 text-brand-500/50" strokeWidth={1} />
         <div className="flex items-center justify-center gap-2.5 mb-6">
-          <ApertureMark className="w-6 h-6" color={brandColor} />
-          <span className="font-display text-base text-white/80">{businessName}</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={businessName} className="h-8 max-w-[160px] object-contain" />
+          ) : (
+            <>
+              <ApertureMark className="w-6 h-6" color={brandColor} />
+              <span className="font-display text-base text-white/80">{businessName}</span>
+            </>
+          )}
         </div>
         <h2 className="font-display text-2xl text-white mb-2">Protected Gallery</h2>
         <p className="text-sm font-body text-dark-warm mb-8">Enter the password to view your photos</p>
@@ -257,6 +264,7 @@ export default function PublicGalleryPage() {
 
   const brandColor = brand?.brand_settings?.primary_color || '#C47D4A';
   const businessName = brand?.business_name || 'Gallery';
+  const logoUrl = brand?.logo_url || null;
 
   useEffect(() => { loadGallery(); }, [slug]);
 
@@ -278,7 +286,20 @@ export default function PublicGalleryPage() {
       if (g.access_type !== 'password') { setUnlocked(true); }
       else { try { const pwRes = await fetch('/api/gallery-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check', gallery_id: g.id }) }); const pwData = await pwRes.json(); if (!pwData.has_password) setUnlocked(true); } catch {} }
       const { data: brandData } = await sb.from('photographers').select('business_name, brand_settings').eq('id', g.photographer_id).single();
-      if (brandData) setBrand(brandData);
+      if (brandData) setBrand(brandData as any);
+      // Fetch logo signed URL via API (service role can sign private storage)
+      try {
+        const brandRes = await fetch(`/api/gallery-branding?photographer_id=${g.photographer_id}`);
+        const brandJson = await brandRes.json();
+        if (brandRes.ok && brandJson) {
+          setBrand((prev) => ({
+            ...prev,
+            business_name: brandJson.business_name || prev?.business_name,
+            brand_settings: brandJson.brand_settings || prev?.brand_settings || {},
+            logo_url: brandJson.logo_url || null,
+          }));
+        }
+      } catch {}
       const { data: photoData } = await sb.from('photos').select('*').eq('gallery_id', g.id).in('status', ['edited', 'approved', 'delivered']).order('sort_order', { ascending: true });
       if (photoData && photoData.length > 0) {
         try { const urlRes = await fetch(`/api/gallery-photos?gallery_id=${g.id}`); const urlData = await urlRes.json();
@@ -332,7 +353,11 @@ export default function PublicGalleryPage() {
   if (loading) return (
     <div className="min-h-screen bg-night flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
-        <ApertureMark className="w-10 h-10 animate-pulse" color={brandColor} />
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-10 max-w-[200px] object-contain animate-pulse" />
+        ) : (
+          <ApertureMark className="w-10 h-10 animate-pulse" color={brandColor} />
+        )}
         <span className="text-[11px] font-sans text-dark-warm tracking-wider">Loading gallery...</span>
       </div>
     </div>
@@ -349,7 +374,7 @@ export default function PublicGalleryPage() {
   );
 
   if (!gallery) return null;
-  if (gallery.access_type === 'password' && !unlocked) return <PasswordGate galleryId={gallery.id} onUnlock={() => setUnlocked(true)} brandColor={brandColor} businessName={businessName} />;
+  if (gallery.access_type === 'password' && !unlocked) return <PasswordGate galleryId={gallery.id} onUnlock={() => setUnlocked(true)} brandColor={brandColor} businessName={businessName} logoUrl={logoUrl} />;
 
   const clientName = gallery.client ? [gallery.client.first_name, gallery.client.last_name].filter(Boolean).join(' ') || null : null;
 
@@ -371,8 +396,14 @@ export default function PublicGalleryPage() {
         {/* Hero content — centred */}
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 pb-12 sm:pb-16 text-center">
           <div className="flex items-center justify-center gap-2.5 mb-5 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'both' }}>
-            <ApertureMark className="w-5 h-5" color={brandColor} />
-            <span className="text-[11px] font-sans font-medium uppercase tracking-[0.2em] text-white/45">{businessName}</span>
+            {logoUrl ? (
+              <img src={logoUrl} alt={businessName} className="h-7 max-w-[180px] object-contain opacity-80" />
+            ) : (
+              <>
+                <ApertureMark className="w-5 h-5" color={brandColor} />
+                <span className="text-[11px] font-sans font-medium uppercase tracking-[0.2em] text-white/45">{businessName}</span>
+              </>
+            )}
           </div>
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl text-white leading-[1.08] tracking-tight max-w-3xl mx-auto animate-fade-up" style={{ animationDelay: '0.2s', animationFillMode: 'both' }}>
             {gallery.title}
