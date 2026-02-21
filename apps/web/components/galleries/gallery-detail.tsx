@@ -81,11 +81,11 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
   const [showDeliverSuccess, setShowDeliverSuccess] = useState(false);
   const [deliverSuccessMessage, setDeliverSuccessMessage] = useState('');
 
-  // Per-gallery settings state
-  const [showSettings, setShowSettings] = useState(false);
+  // Per-gallery settings state — always visible now (no toggle)
   const [editTitle, setEditTitle] = useState(gallery.title);
   const [editDescription, setEditDescription] = useState(gallery.description || '');
-  const [editAccessType, setEditAccessType] = useState<GalleryAccessType>(gallery.access_type);
+  // Access type is read from the global photographer default — not editable per-gallery
+  const [globalAccessType, setGlobalAccessType] = useState<GalleryAccessType>(gallery.access_type);
   const [editExpiryDays, setEditExpiryDays] = useState<string>(() => {
     if (!gallery.expires_at) return 'none';
     const days = Math.round((new Date(gallery.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -112,10 +112,24 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
 
   const galleryUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/gallery/${gallery.slug || gallery.id}`;
 
+  // Load photographer's global default access type
+  useEffect(() => {
+    async function loadGlobalDefaults() {
+      try {
+        const photographer = await getCurrentPhotographer();
+        if (photographer) {
+          const defaultType = (photographer as any).gallery_default_access_type || 'public';
+          setGlobalAccessType(defaultType);
+        }
+      } catch {}
+    }
+    loadGlobalDefaults();
+  }, []);
+
   // Check if password is already set for this gallery
   useEffect(() => {
     async function checkPassword() {
-      if (gallery.access_type !== 'password' && editAccessType !== 'password') return;
+      if (globalAccessType !== 'password') return;
       setPasswordChecking(true);
       try {
         const res = await fetch('/api/gallery-password', {
@@ -129,7 +143,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
       setPasswordChecking(false);
     }
     checkPassword();
-  }, [gallery.id, gallery.access_type, editAccessType]);
+  }, [gallery.id, globalAccessType]);
 
   useEffect(() => {
     async function loadPhotos() {
@@ -162,7 +176,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
     const updated = await updateGallery(gallery.id, {
       title: editTitle.trim() || gallery.title,
       description: editDescription.trim() || undefined,
-      access_type: editAccessType,
+      access_type: globalAccessType, // Use global default
       expires_at: expiresAt || undefined,
       download_permissions: {
         allow_full_res: editDownloadFullRes,
@@ -196,8 +210,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
 
   const handleDeliver = async () => {
     // Check password requirement — must have a password hash set in DB
-    if (editAccessType === 'password' && !passwordSet) {
-      setShowSettings(true); // Open settings panel so they can see the password field
+    if (globalAccessType === 'password' && !passwordSet) {
       alert('Please set a gallery password before delivering. The password field is in Gallery Settings below.');
       return;
     }
@@ -268,8 +281,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
     setLightboxPhoto(photos[next]);
   }, [lightboxIndex, photos]);
 
-  const AccessIcon = gallery.access_type === 'password' ? Lock
-    : gallery.access_type === 'email' ? Mail
+  const AccessIcon = globalAccessType === 'password' ? Lock
+    : globalAccessType === 'email' ? Mail
     : Globe;
 
   return (
@@ -323,9 +336,6 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
               <Button size="sm" variant="secondary" onClick={() => window.open(galleryUrl, '_blank')}>
                 <ExternalLink className="w-3 h-3" />Preview
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowSettings(!showSettings)}>
-                <Settings className="w-3 h-3" />{showSettings ? 'Hide Settings' : 'Settings'}
-              </Button>
               {gallery.status === 'ready' && (
                 <button onClick={async () => {
                   const updated = await updateGallery(gallery.id, { status: 'processing' as any });
@@ -377,8 +387,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
         ))}
       </div>
 
-      {/* Per-gallery settings panel */}
-      {showSettings && (
+      {/* Gallery Settings — always visible */}
+      {(gallery.status === 'delivered' || gallery.status === 'ready') && (
         <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-4 sm:p-5 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Pencil className="w-4 h-4 text-amber-400" />
@@ -410,26 +420,8 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
             />
           </div>
 
-          {/* Access type + Expiry row */}
+          {/* Expiry + Download permissions row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[11px] text-slate-400 block mb-1.5">Access Type</label>
-              <div className="flex gap-2">
-                {(['public', 'password', 'email', 'private'] as GalleryAccessType[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setEditAccessType(t)}
-                    className={`flex-1 px-2 py-1.5 text-[11px] rounded-lg border transition-all capitalize ${
-                      editAccessType === t
-                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                        : 'border-white/[0.06] bg-white/[0.02] text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div>
               <label className="text-[11px] text-slate-400 block mb-1.5">Expiry</label>
               <select
@@ -445,35 +437,33 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                 <option value="none">No expiry</option>
               </select>
             </div>
-          </div>
-
-          {/* Download permissions */}
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1.5">Download Permissions</label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editDownloadFullRes}
-                  onChange={(e) => setEditDownloadFullRes(e.target.checked)}
-                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
-                />
-                <span className="text-xs text-slate-300">Full resolution</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editDownloadWeb}
-                  onChange={(e) => setEditDownloadWeb(e.target.checked)}
-                  className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
-                />
-                <span className="text-xs text-slate-300">Web resolution</span>
-              </label>
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1.5">Download Permissions</label>
+              <div className="flex items-center gap-4 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editDownloadFullRes}
+                    onChange={(e) => setEditDownloadFullRes(e.target.checked)}
+                    className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                  />
+                  <span className="text-xs text-slate-300">Full resolution</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editDownloadWeb}
+                    onChange={(e) => setEditDownloadWeb(e.target.checked)}
+                    className="rounded border-white/20 bg-white/[0.04] text-amber-500 focus:ring-amber-500/50"
+                  />
+                  <span className="text-xs text-slate-300">Web resolution</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          {/* Password (when access type is password) */}
-          {editAccessType === 'password' && (
+          {/* Password — only shown when global default access type is 'password' */}
+          {globalAccessType === 'password' && (
             <div>
               <label className="text-[11px] text-slate-400 block mb-1.5">
                 Gallery Password
@@ -534,15 +524,12 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
               {settingsSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : settingsSaved ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
               {settingsSaving ? 'Saving...' : settingsSaved ? 'Saved!' : 'Save Settings'}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowSettings(false)}>
-              Close
-            </Button>
           </div>
         </div>
       )}
 
       {/* Gallery link bar */}
-      {!showSettings && (gallery.status === 'delivered' || gallery.status === 'ready') && (
+      {(gallery.status === 'delivered' || gallery.status === 'ready') && (
         <div className="rounded-xl border border-white/[0.06] bg-[#0c0c16] p-3 sm:p-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
@@ -559,7 +546,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
           </div>
           <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
             <span className="flex items-center gap-1 capitalize">
-              <AccessIcon className="w-2.5 h-2.5" />{gallery.access_type} access
+              <AccessIcon className="w-2.5 h-2.5" />{globalAccessType} access
             </span>
             {gallery.expires_at && (
               <span className="flex items-center gap-1">
@@ -654,7 +641,7 @@ export function GalleryDetail({ gallery: initialGallery, onBack, onUpdate }: Gal
                 <div>
                   <p className="text-xs sm:text-sm font-medium text-white">Ready to deliver</p>
                   <p className="text-[10px] sm:text-[11px] text-slate-500">
-                    {photos.length} photos · {gallery.access_type} access
+                    {photos.length} photos · {globalAccessType} access
                     {gallery.expires_at ? ` · expires ${formatDate(gallery.expires_at, 'short')}` : ' · no expiry'}
                   </p>
                 </div>
