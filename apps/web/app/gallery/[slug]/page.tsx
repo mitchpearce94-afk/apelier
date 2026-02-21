@@ -431,7 +431,7 @@ export default function PublicGalleryPage() {
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 pb-12 sm:pb-16 text-center">
           <div className="flex items-center justify-center gap-2.5 mb-5 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'both' }}>
             {logoUrl ? (
-              <img src={logoUrl} alt={businessName} className="h-16 sm:h-20 max-w-[320px] object-contain opacity-90 drop-shadow-lg" />
+              <img src={logoUrl} alt={businessName} className="h-24 sm:h-32 max-w-[400px] object-contain opacity-90 drop-shadow-lg" />
             ) : (
               <>
                 <ApertureMark className="w-6 h-6" color={brandColor} />
