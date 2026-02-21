@@ -41,6 +41,53 @@ function ApertureMark({ className = 'w-5 h-5', color = '#c47d4a' }: { className?
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
+/* PROGRESSIVE HERO IMAGE                                                    */
+/* Shows blurred thumbnail instantly, fades in crisp 2048px version          */
+/* ═══════════════════════════════════════════════════════════════════════════ */
+function ProgressiveHeroImage({ thumbSrc, fullSrc, alt }: { thumbSrc: string | null; fullSrc: string | null; alt: string }) {
+  const [fullLoaded, setFullLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!fullSrc || fullSrc === thumbSrc) return;
+    const img = new Image();
+    img.onload = () => setFullLoaded(true);
+    img.src = fullSrc;
+  }, [fullSrc, thumbSrc]);
+
+  if (!thumbSrc && !fullSrc) {
+    return <div className="absolute inset-0 bg-gradient-to-br from-brand-950 via-night to-ink" />;
+  }
+
+  return (
+    <>
+      {/* Layer 1: Blurred thumbnail — loads instantly, provides colour/shape while full loads */}
+      {thumbSrc && (
+        <img
+          src={thumbSrc}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
+          style={{
+            filter: fullLoaded ? 'blur(0px)' : 'blur(24px)',
+            transform: fullLoaded ? 'scale(1)' : 'scale(1.08)',
+            transition: 'filter 0.8s ease-out, transform 0.8s ease-out, opacity 0.8s ease-out',
+            opacity: fullLoaded ? 0 : 1,
+          }}
+        />
+      )}
+      {/* Layer 2: Full resolution (2048px) — fades in on top once loaded */}
+      {fullSrc && fullLoaded && (
+        <img
+          src={fullSrc}
+          alt={alt}
+          className="absolute inset-0 w-full h-full object-cover object-[center_30%] animate-fade-in"
+        />
+      )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
 /* PASSWORD GATE                                                              */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 function PasswordGate({ galleryId, onUnlock, brandColor, businessName, logoUrl }: {
@@ -129,8 +176,6 @@ function Lightbox({ photo, photos, onClose, onPrev, onNext, onToggleFav, canDown
   return (
     <div className="fixed inset-0 z-50 animate-fade-in" onClick={onClose}>
       <div className="absolute inset-0 bg-black/[0.96]" />
-
-      {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 sm:px-8 py-5" onClick={e => e.stopPropagation()}>
         <span className="text-[13px] font-sans font-light text-white/25 tracking-wider tabular-nums">
           {idx + 1} <span className="text-white/10 mx-1">/</span> {photos.length}
@@ -155,16 +200,12 @@ function Lightbox({ photo, photos, onClose, onPrev, onNext, onToggleFav, canDown
           <button onClick={onClose} className="p-2.5 rounded-full hover:bg-white/[0.06] text-white/25 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
         </div>
       </div>
-
-      {/* Nav arrows */}
       {idx > 0 && (
         <button onClick={e => { e.stopPropagation(); onPrev(); }} className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full text-white/10 hover:text-white/50 hover:bg-white/[0.04] transition-all"><ChevronLeft className="w-7 h-7" /></button>
       )}
       {idx < photos.length - 1 && (
         <button onClick={e => { e.stopPropagation(); onNext(); }} className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full text-white/10 hover:text-white/50 hover:bg-white/[0.04] transition-all"><ChevronRight className="w-7 h-7" /></button>
       )}
-
-      {/* Image */}
       <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-14 md:p-20" onClick={e => e.stopPropagation()}>
         {imgSrc ? (
           <img src={imgSrc} alt={photo.filename} className="max-w-full max-h-full object-contain select-none" />
@@ -172,8 +213,6 @@ function Lightbox({ photo, photos, onClose, onPrev, onNext, onToggleFav, canDown
           <div className="w-[800px] max-w-full aspect-[3/2] bg-white/[0.02] rounded-lg flex items-center justify-center"><Camera className="w-12 h-12 text-white/10" /></div>
         )}
       </div>
-
-      {/* Section label */}
       {photo.section && (
         <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10">
           <span className="text-[10px] font-sans font-medium uppercase tracking-[0.2em] text-white/15">{photo.section}</span>
@@ -215,7 +254,6 @@ function PhotoTile({ photo, index, onClick, onToggleFav, canDownload }: {
         ) : (
           <div className="w-full aspect-[4/3] bg-white/[0.02] flex items-center justify-center"><Camera className="w-5 h-5 text-white/10" /></div>
         )}
-        {/* Hover overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-1.5">
             <button onClick={(e) => { e.stopPropagation(); onToggleFav(photo.id, !photo.is_favorite); }}
@@ -233,7 +271,6 @@ function PhotoTile({ photo, index, onClick, onToggleFav, canDownload }: {
           </div>
         </div>
       </div>
-      {/* Fav badge */}
       {photo.is_favorite && (
         <div className="absolute top-2 right-2 group-hover:opacity-0 transition-opacity duration-200">
           <div className="p-1.5 rounded-full bg-black/30 backdrop-blur-sm"><Heart className="w-3 h-3 text-brand-500 fill-brand-500" /></div>
@@ -287,7 +324,6 @@ export default function PublicGalleryPage() {
       else { try { const pwRes = await fetch('/api/gallery-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'check', gallery_id: g.id }) }); const pwData = await pwRes.json(); if (!pwData.has_password) setUnlocked(true); } catch {} }
       const { data: brandData } = await sb.from('photographers').select('business_name, brand_settings').eq('id', g.photographer_id).single();
       if (brandData) setBrand(brandData as any);
-      // Fetch logo signed URL via API (service role can sign private storage)
       try {
         const brandRes = await fetch(`/api/gallery-branding?photographer_id=${g.photographer_id}`);
         const brandJson = await brandRes.json();
@@ -331,10 +367,11 @@ export default function PublicGalleryPage() {
     setLightboxPhoto(displayPhotos[next]);
   }, [lightboxIndex, displayPhotos]);
 
-  // Priority: explicit cover > first photo web (2048px) > thumb (400px — avoid, will be pixelated on hero)
-  const coverPhoto = gallery?.cover_photo_url || (photos.length > 0 ? ((photos[0] as any).web_url || (photos[0] as any).thumb_url) : null);
+  // Hero cover sources — progressive: thumb (400px, blurred) → web (2048px, crisp)
+  const firstPhoto = photos.length > 0 ? photos[0] as any : null;
+  const coverThumb = gallery?.cover_photo_url || firstPhoto?.thumb_url || null;
+  const coverFull = gallery?.cover_photo_url || firstPhoto?.web_url || null;
 
-  // ─── Group photos by section for display ──────────────────────────────────
   const photoGroups: { section: string; photos: Photo[] }[] = [];
   if (activeSection === 'all' && sections.length > 2 && !showFavoritesOnly) {
     const sectionOrder: string[] = [];
@@ -349,7 +386,6 @@ export default function PublicGalleryPage() {
     photoGroups.push({ section: '', photos: displayPhotos });
   }
 
-  // ─── Loading ──────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen bg-night flex items-center justify-center">
       <div className="flex flex-col items-center gap-4">
@@ -382,18 +418,16 @@ export default function PublicGalleryPage() {
     <div className="min-h-screen bg-night">
       {lightboxPhoto && <Lightbox photo={lightboxPhoto} photos={displayPhotos} onClose={() => setLightboxPhoto(null)} onPrev={() => goLightbox(-1)} onNext={() => goLightbox(1)} onToggleFav={toggleFavorite} canDownload={canDownload} brandColor={brandColor} />}
 
-      {/* ─── Full-bleed Hero Cover ─── */}
+      {/* ─── Full-bleed Hero Cover — Progressive Image Loading ─── */}
       <section className="relative h-[70vh] sm:h-[80vh] max-h-[900px] min-h-[480px] flex items-end overflow-hidden">
-        {coverPhoto ? (
-          <img src={coverPhoto} alt={gallery.title} className="absolute inset-0 w-full h-full object-cover object-[center_30%]" />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-950 via-night to-ink" />
-        )}
+        <ProgressiveHeroImage thumbSrc={coverThumb} fullSrc={coverFull} alt={gallery.title} />
+
         {/* Cinematic gradient overlays */}
         <div className="absolute inset-0 bg-gradient-to-t from-night via-night/40 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-night via-transparent to-transparent opacity-60" />
+        {/* Subtle radial vignette for cinematic depth */}
+        <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 40%, rgba(14,14,16,0.45) 100%)' }} />
 
-        {/* Hero content — centred */}
         <div className="relative z-10 w-full max-w-7xl mx-auto px-6 sm:px-10 pb-12 sm:pb-16 text-center">
           <div className="flex items-center justify-center gap-2.5 mb-5 animate-fade-up" style={{ animationDelay: '0.1s', animationFillMode: 'both' }}>
             {logoUrl ? (
@@ -473,7 +507,6 @@ export default function PublicGalleryPage() {
         </div>
       </div>
 
-      {/* ─── Favourites banner ─── */}
       {showFavoritesOnly && (
         <div className="max-w-7xl mx-auto px-4 sm:px-10 pt-5">
           <div className="flex items-center justify-between rounded-xl bg-brand-500/[0.06] border border-brand-500/15 px-4 py-3">
@@ -483,7 +516,6 @@ export default function PublicGalleryPage() {
         </div>
       )}
 
-      {/* ─── Photo Gallery ─── */}
       <div id="gallery-grid" className="max-w-7xl mx-auto px-4 sm:px-10 py-8 sm:py-10">
         {displayPhotos.length === 0 ? (
           <div className="text-center py-28">
@@ -520,7 +552,6 @@ export default function PublicGalleryPage() {
         )}
       </div>
 
-      {/* ─── Footer ─── */}
       <footer className="border-t border-white/[0.04]">
         <div className="max-w-7xl mx-auto px-4 sm:px-10 py-8 flex items-center justify-between">
           <a href="https://apelier.com.au" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[11px] font-body text-dark-warm hover:text-warm-grey transition-colors">

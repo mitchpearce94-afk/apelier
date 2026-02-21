@@ -44,6 +44,8 @@ const ACCEPTED_EXTENSIONS = [
   '.cr2', '.cr3', '.nef', '.arw', '.dng', '.raf', '.orf', '.rw2',
 ];
 
+const CONCURRENT_UPLOADS = 3;
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -55,6 +57,14 @@ function isValidFile(file: File): boolean {
   if (ACCEPTED_TYPES.includes(file.type)) return true;
   const ext = '.' + file.name.split('.').pop()?.toLowerCase();
   return ACCEPTED_EXTENSIONS.includes(ext);
+}
+
+function CheckCircle({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  );
 }
 
 export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
@@ -77,206 +87,115 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
   const fileMapRef = useRef<Map<string, File>>(new Map());
   const uploadErrorsRef = useRef<{ name: string; reason: string }[]>([]);
   const [errorModalFiles, setErrorModalFiles] = useState<{ name: string; reason: string }[]>([]);
+  const abortRef = useRef(false);
 
   useEffect(() => {
     async function load() {
-      const [jobData, profileData] = await Promise.all([
-        getUploadableJobs(),
-        getStyleProfiles(),
-      ]);
+      const [jobData, profileData] = await Promise.all([getUploadableJobs(), getStyleProfiles()]);
       setJobs(jobData);
       const readyProfiles = profileData.filter((p) => p.status === 'ready');
       setStyleProfiles(readyProfiles);
-      // Auto-select the first ready style profile
-      if (readyProfiles.length > 0 && !selectedStyleId) {
-        setSelectedStyleId(readyProfiles[0].id);
-      }
+      if (readyProfiles.length > 0 && !selectedStyleId) setSelectedStyleId(readyProfiles[0].id);
       setLoadingJobs(false);
     }
     load();
   }, []);
 
+  // beforeunload warning during upload
+  useEffect(() => {
+    if (!uploading) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [uploading]);
+
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const validFiles: UploadFile[] = [];
-    const invalid: string[] = [];
-
     Array.from(newFiles).forEach((file) => {
       if (isValidFile(file)) {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         fileMapRef.current.set(id, file);
-        validFiles.push({
-          id,
-          file,
-          progress: 0,
-          status: 'pending',
-        });
-      } else {
-        invalid.push(file.name);
+        validFiles.push({ id, file, progress: 0, status: 'pending' });
       }
     });
-
-    if (invalid.length > 0) {
-      console.warn('Rejected files:', invalid);
-    }
-
     setFiles((prev) => [...prev, ...validFiles]);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files.length > 0) {
-      addFiles(e.dataTransfer.files);
+  const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files); }, [addFiles]);
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(true); }, []);
+  const handleDragLeave = useCallback(() => setDragOver(false), []);
+  const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id));
+  const clearAll = () => { setFiles([]); setUploadComplete(false); setProcessingTriggered(false); setProcessingError(null); abortRef.current = false; };
+
+  const uploadSingleFile = async (uploadFile: UploadFile, photographerId: string, galleryId: string, sortBase: number, index: number): Promise<boolean> => {
+    const actualFile = fileMapRef.current.get(uploadFile.id) || uploadFile.file;
+    setFiles((prev) => prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'uploading' as const, progress: 0 } : f)));
+    try {
+      const result = await uploadPhotoToStorage(actualFile, photographerId, galleryId);
+      if (abortRef.current) return false;
+      if (result) {
+        await createPhotoRecord({ gallery_id: galleryId, original_key: result.storageKey, filename: uploadFile.file.name, file_size: uploadFile.file.size, mime_type: uploadFile.file.type || 'application/octet-stream', sort_order: sortBase + index });
+        setFiles((prev) => prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f)));
+        return true;
+      } else {
+        const reason = 'Upload returned no result — try again.';
+        uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
+        setFiles((prev) => prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'error' as const, error: reason } : f)));
+        return false;
+      }
+    } catch (err) {
+      if (abortRef.current) return false;
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      const reason = message.includes('mime type') ? 'Unsupported file type. Try converting to JPEG first.'
+        : message.includes('Failed to fetch') || message.includes('NetworkError') ? 'Network error — check your internet connection.'
+        : `Upload error: ${message}`;
+      uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
+      setFiles((prev) => prev.map((f) => f.id === uploadFile.id ? { ...f, status: 'error' as const, error: reason } : f));
+      return false;
     }
-  }, [addFiles]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setDragOver(false);
-  }, []);
-
-  const removeFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-  };
-
-  const clearAll = () => {
-    setFiles([]);
-    setUploadComplete(false);
-    setProcessingTriggered(false);
-    setProcessingError(null);
   };
 
   const startUpload = async () => {
     if (!selectedJob || files.length === 0) return;
-
-    setUploading(true);
-    setUploadComplete(false);
-    uploadErrorsRef.current = [];
-
+    setUploading(true); setUploadComplete(false); abortRef.current = false; uploadErrorsRef.current = [];
     try {
       const photographer = await getCurrentPhotographer();
-      if (!photographer) {
-        console.error('No photographer found');
-        setUploading(false);
-        return;
-      }
-
-      // Create gallery for this job (or get existing one)
-      const clientName = selectedJob.client
-        ? `${selectedJob.client.first_name} ${selectedJob.client.last_name || ''}`
-        : 'Untitled';
+      if (!photographer) { setUploading(false); return; }
+      const clientName = selectedJob.client ? `${selectedJob.client.first_name} ${selectedJob.client.last_name || ''}` : 'Untitled';
       const galleryTitle = selectedJob.title || `${clientName} — ${selectedJob.job_type || 'Photos'}`;
       const gallery = await createGalleryForJob(selectedJob.id, galleryTitle);
-
-      if (!gallery) {
-        console.error('Failed to create gallery');
-        setUploading(false);
-        return;
-      }
-
-      // Only set job to 'editing' if it's in an early stage — don't pull back from review/delivered
+      if (!gallery) { setUploading(false); return; }
       const earlyStatuses = ['upcoming', 'booked', 'confirmed', 'new', 'scheduled'];
-      if (!selectedJob.status || earlyStatuses.includes(selectedJob.status)) {
-        await updateJob(selectedJob.id, { status: 'editing' as any });
-      }
+      if (!selectedJob.status || earlyStatuses.includes(selectedJob.status)) await updateJob(selectedJob.id, { status: 'editing' as any });
 
-      // Upload each file sequentially
-      for (let i = 0; i < files.length; i++) {
-        const uploadFile = files[i];
-        const actualFile = fileMapRef.current.get(uploadFile.id) || uploadFile.file;
-
-        // Mark as uploading
-        setFiles((prev) =>
-          prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'uploading' as const, progress: 0 } : f))
-        );
-
-        try {
-          const result = await uploadPhotoToStorage(
-            actualFile,
-            photographer.id,
-            gallery.id
-          );
-
-          if (result) {
-            await createPhotoRecord({
-              gallery_id: gallery.id,
-              original_key: result.storageKey,
-              filename: uploadFile.file.name,
-              file_size: uploadFile.file.size,
-              mime_type: uploadFile.file.type || 'application/octet-stream',
-              sort_order: i,
-            });
-            setFiles((prev) =>
-              prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'complete' as const, progress: 100 } : f))
-            );
-          } else {
-            const reason = 'Upload returned no result — try again.';
-            uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
-            setFiles((prev) =>
-              prev.map((f) => (f.id === uploadFile.id ? { ...f, status: 'error' as const, error: reason } : f))
-            );
-          }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Upload failed';
-          const reason = message.includes('mime type')
-            ? `Unsupported file type. Try converting to JPEG first.`
-            : message.includes('Failed to fetch') || message.includes('NetworkError')
-            ? 'Network error — check your internet connection.'
-            : `Upload error: ${message}`;
-          uploadErrorsRef.current.push({ name: uploadFile.file.name, reason });
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.id === uploadFile.id
-                ? { ...f, status: 'error' as const, error: reason }
-                : f
-            )
-          );
+      const pendingFiles = files.filter((f) => f.status === 'pending' || f.status === 'error');
+      let fileIndex = 0;
+      const uploadNext = async (): Promise<void> => {
+        while (fileIndex < pendingFiles.length) {
+          if (abortRef.current) return;
+          const idx = fileIndex++;
+          if (idx >= pendingFiles.length) return;
+          await uploadSingleFile(pendingFiles[idx], photographer.id, gallery.id, existingPhotoCount, idx);
         }
-      }
+      };
+      const workers = Array.from({ length: Math.min(CONCURRENT_UPLOADS, pendingFiles.length) }, () => uploadNext());
+      await Promise.all(workers);
+      if (abortRef.current) { setUploading(false); return; }
 
-      // Update gallery with photo count
       setUploadComplete(true);
+      if (uploadErrorsRef.current.length > 0) setErrorModalFiles([...uploadErrorsRef.current]);
 
-      // Show error modal if any files failed
-      if (uploadErrorsRef.current.length > 0) {
-        setErrorModalFiles([...uploadErrorsRef.current]);
-      }
-
-      // Auto-trigger AI processing pipeline
       if (autoProcess && gallery) {
-        setProcessingTriggered(true);
-        setProcessingError(null);
+        setProcessingTriggered(true); setProcessingError(null);
         try {
-          const processRes = await fetch('/api/process', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'process',
-              gallery_id: gallery.id,
-              style_profile_id: selectedStyleId || null,
-              included_images: selectedJob.included_images || null,
-            }),
-          });
+          const processRes = await fetch('/api/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'process', gallery_id: gallery.id, style_profile_id: selectedStyleId || null, included_images: selectedJob.included_images || null }) });
           const processResult = await processRes.json();
-          if (!processRes.ok || processResult.status === 'error') {
-            setProcessingError(processResult.message || processResult.error || 'Failed to start processing');
-          }
-        } catch (err) {
-          setProcessingError('AI Engine not reachable. Start it locally or check Railway deployment.');
-        }
+          if (!processRes.ok || processResult.status === 'error') setProcessingError(processResult.message || processResult.error || 'Failed to start processing');
+        } catch { setProcessingError('AI Engine not reachable. Start it locally or check Railway deployment.'); }
       }
-
-      if (uploadErrorsRef.current.length === 0) {
-        onUploadComplete();
-      }
-    } catch (err) {
-      console.error('Upload error:', err);
-    }
-
+      setExistingPhotoCount((prev) => prev + files.filter((f) => f.status === 'complete').length);
+      if (uploadErrorsRef.current.length === 0) onUploadComplete();
+    } catch (err) { console.error('Upload error:', err); }
     setUploading(false);
   };
 
@@ -286,13 +205,20 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
 
   return (
     <div className="space-y-5">
-      {/* Step 1: Select Job */}
+      {uploading && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-xs text-red-300 font-medium">Upload in progress — don&apos;t leave this page</p>
+            <p className="text-[11px] text-red-400/60 mt-0.5">Navigating away will stop the upload. Stay on this tab until it finishes.</p>
+          </div>
+        </div>
+      )}
+
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-2">1. Select a job to upload photos to</label>
         {loadingJobs ? (
-          <div className="flex items-center gap-2 text-xs text-slate-500 py-3">
-            <Loader2 className="w-3 h-3 animate-spin" />Loading jobs...
-          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500 py-3"><Loader2 className="w-3 h-3 animate-spin" />Loading jobs...</div>
         ) : jobs.length === 0 ? (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
@@ -303,32 +229,20 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
           </div>
         ) : (
           <div className="relative">
-            <button
-              onClick={() => setShowJobPicker(!showJobPicker)}
-              disabled={uploading}
-              className="w-full flex items-center justify-between px-3 py-2.5 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-left hover:border-white/[0.12] transition-all disabled:opacity-50"
-            >
+            <button onClick={() => setShowJobPicker(!showJobPicker)} disabled={uploading}
+              className="w-full flex items-center justify-between px-3 py-2.5 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-left hover:border-white/[0.12] transition-all disabled:opacity-50">
               {selectedJob ? (
                 <div className="flex items-center gap-2 min-w-0">
                   <Camera className="w-4 h-4 text-amber-400 flex-shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-slate-200 truncate block">
-                      {selectedJob.job_number ? `#${String(selectedJob.job_number).padStart(4, '0')} — ` : ''}
-                      {selectedJob.title || selectedJob.job_type || 'Untitled Job'}
-                    </span>
-                    {selectedJob.client && (
-                      <span className="text-[11px] text-slate-500">
-                        {selectedJob.client.first_name} {selectedJob.client.last_name || ''}
-                      </span>
-                    )}
+                    <span className="text-slate-200 truncate block">{selectedJob.job_number ? `#${String(selectedJob.job_number).padStart(4, '0')} — ` : ''}{selectedJob.title || selectedJob.job_type || 'Untitled Job'}</span>
+                    {selectedJob.client && <span className="text-[11px] text-slate-500">{selectedJob.client.first_name} {selectedJob.client.last_name || ''}</span>}
                   </div>
+                  {existingPhotoCount > 0 && <span className="text-[10px] text-amber-400/80 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex-shrink-0">{existingPhotoCount} uploaded</span>}
                 </div>
-              ) : (
-                <span className="text-slate-500">Select a job...</span>
-              )}
+              ) : (<span className="text-slate-500">Select a job...</span>)}
               <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showJobPicker ? 'rotate-180' : ''}`} />
             </button>
-
             {showJobPicker && (
               <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#0c0c16] shadow-xl">
                 {(() => {
@@ -336,57 +250,27 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                   const todayJobs = jobs.filter((j) => j.date === today);
                   const otherJobs = jobs.filter((j) => j.date !== today);
                   const renderJob = (job: typeof jobs[0]) => {
-                    const clientName = job.client ? `${job.client.first_name} ${job.client.last_name || ''}` : '';
+                    const cn = job.client ? `${job.client.first_name} ${job.client.last_name || ''}` : '';
                     return (
-                      <button
-                        key={job.id}
-                        onClick={async () => {
-                          setSelectedJob(job);
-                          setShowJobPicker(false);
-                          setPackageLimit(job.included_images || null);
-                          const existingGallery = await getGalleryForJob(job.id);
-                          if (existingGallery) {
-                            const count = await getGalleryPhotoCount(existingGallery.id);
-                            setExistingPhotoCount(count);
-                          } else {
-                            setExistingPhotoCount(0);
-                          }
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${
-                          selectedJob?.id === job.id ? 'bg-amber-500/10' : ''
-                        }`}
-                      >
+                      <button key={job.id} onClick={async () => {
+                        setSelectedJob(job); setShowJobPicker(false); setPackageLimit(job.included_images || null);
+                        const eg = await getGalleryForJob(job.id);
+                        if (eg) { const c = await getGalleryPhotoCount(eg.id); setExistingPhotoCount(c); } else { setExistingPhotoCount(0); }
+                        clearAll();
+                      }} className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/[0.04] transition-colors ${selectedJob?.id === job.id ? 'bg-amber-500/10' : ''}`}>
                         <Camera className="w-4 h-4 text-slate-600 flex-shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-slate-200 truncate">
-                            {job.job_number ? `#${String(job.job_number).padStart(4, '0')} — ` : ''}
-                            {job.title || job.job_type || 'Untitled Job'}
-                          </p>
-                          <p className="text-[10px] text-slate-500">{clientName}{job.date ? ` · ${job.date}` : ''}</p>
+                          <p className="text-xs text-slate-200 truncate">{job.job_number ? `#${String(job.job_number).padStart(4, '0')} — ` : ''}{job.title || job.job_type || 'Untitled Job'}</p>
+                          <p className="text-[10px] text-slate-500">{cn}{job.date ? ` · ${job.date}` : ''}</p>
                         </div>
                         {selectedJob?.id === job.id && <Check className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
                       </button>
                     );
                   };
-                  return (
-                    <>
-                      {todayJobs.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[10px] font-medium text-amber-400 uppercase tracking-wider bg-amber-500/5 border-b border-white/[0.04]">Today</div>
-                          {todayJobs.map(renderJob)}
-                        </>
-                      )}
-                      {otherJobs.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.04]">{todayJobs.length > 0 ? 'Other Jobs' : 'All Jobs'}</div>
-                          {otherJobs.map(renderJob)}
-                        </>
-                      )}
-                      {jobs.length === 0 && (
-                        <div className="px-3 py-4 text-xs text-slate-600 text-center">No uploadable jobs found</div>
-                      )}
-                    </>
-                  );
+                  return (<>
+                    {todayJobs.length > 0 && (<><div className="px-3 py-1.5 text-[10px] font-medium text-amber-400 uppercase tracking-wider bg-amber-500/5 border-b border-white/[0.04]">Today</div>{todayJobs.map(renderJob)}</>)}
+                    {otherJobs.length > 0 && (<><div className="px-3 py-1.5 text-[10px] font-medium text-slate-500 uppercase tracking-wider bg-white/[0.02] border-b border-white/[0.04]">{todayJobs.length > 0 ? 'Other Jobs' : 'All Jobs'}</div>{otherJobs.map(renderJob)}</>)}
+                  </>);
                 })()}
               </div>
             )}
@@ -394,7 +278,16 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         )}
       </div>
 
-      {/* Step 2: Style Profile (optional) */}
+      {selectedJob && existingPhotoCount > 0 && !uploading && !uploadComplete && (
+        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 flex items-start gap-2">
+          <ImageIcon className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-xs text-blue-300 font-medium">This job already has {existingPhotoCount} photo{existingPhotoCount !== 1 ? 's' : ''} uploaded</p>
+            <p className="text-[11px] text-blue-400/60 mt-0.5">New files will be appended. Duplicates won&apos;t be created for photos already in the gallery.</p>
+          </div>
+        </div>
+      )}
+
       {selectedJob && (
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-2">2. Choose a style profile <span className="text-slate-600">(optional)</span></label>
@@ -407,113 +300,53 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
               </div>
             </div>
           ) : (
-            <select
-              value={selectedStyleId}
-              onChange={(e) => setSelectedStyleId(e.target.value)}
-              disabled={uploading}
-              className="w-full px-3 py-2.5 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 disabled:opacity-50"
-            >
+            <select value={selectedStyleId} onChange={(e) => setSelectedStyleId(e.target.value)} disabled={uploading}
+              className="w-full px-3 py-2.5 text-sm bg-white/[0.04] border border-white/[0.08] rounded-lg text-slate-300 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 disabled:opacity-50">
               <option value="">No style — process without colour grading</option>
-              {styleProfiles.map((sp) => (
-                <option key={sp.id} value={sp.id}>{sp.name}{sp.description ? ` — ${sp.description}` : ''}</option>
-              ))}
+              {styleProfiles.map((sp) => (<option key={sp.id} value={sp.id}>{sp.name}{sp.description ? ` — ${sp.description}` : ''}</option>))}
             </select>
           )}
-
-          {/* Auto-process toggle */}
           <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={() => setAutoProcess(!autoProcess)}
-              className={`relative w-8 h-[18px] rounded-full transition-colors ${autoProcess ? 'bg-indigo-500' : 'bg-white/[0.1]'}`}
-            >
+            <button onClick={() => setAutoProcess(!autoProcess)} className={`relative w-8 h-[18px] rounded-full transition-colors ${autoProcess ? 'bg-indigo-500' : 'bg-white/[0.1]'}`}>
               <div className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${autoProcess ? 'left-[16px]' : 'left-[2px]'}`} />
             </button>
-            <span className="text-[11px] text-slate-400">
-              {autoProcess ? 'Auto-process after upload' : 'Upload only — process manually later'}
-            </span>
+            <span className="text-[11px] text-slate-400">{autoProcess ? 'Auto-process after upload' : 'Upload only — process manually later'}</span>
           </div>
         </div>
       )}
 
-      {/* Step 3: Drop zone */}
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-2">{selectedJob ? '3' : '2'}. Add your photos</label>
-
-        {/* Image counter — shows package limit */}
         {selectedJob && packageLimit && packageLimit > 0 && (
           <div className="mb-3">
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-slate-400">
-                {existingPhotoCount + files.length} / {packageLimit} images
-                {existingPhotoCount > 0 && files.length > 0 && (
-                  <span className="text-slate-600"> ({existingPhotoCount} existing + {files.length} new)</span>
-                )}
-              </span>
-              {existingPhotoCount + files.length > packageLimit && (
-                <span className="text-red-400 font-medium">Over limit</span>
-              )}
-              {existingPhotoCount + files.length > 0 && existingPhotoCount + files.length < packageLimit && (
-                <span className="text-amber-400">{packageLimit - existingPhotoCount - files.length} remaining</span>
-              )}
-              {existingPhotoCount + files.length === packageLimit && (
-                <span className="text-emerald-400 font-medium">Complete</span>
-              )}
+              <span className="text-slate-400">{existingPhotoCount + files.length} / {packageLimit} images{existingPhotoCount > 0 && files.length > 0 && <span className="text-slate-600"> ({existingPhotoCount} existing + {files.length} new)</span>}</span>
+              {existingPhotoCount + files.length > packageLimit && <span className="text-red-400 font-medium">Over limit</span>}
+              {existingPhotoCount + files.length > 0 && existingPhotoCount + files.length < packageLimit && <span className="text-amber-400">{packageLimit - existingPhotoCount - files.length} remaining</span>}
+              {existingPhotoCount + files.length === packageLimit && <span className="text-emerald-400 font-medium">Complete</span>}
             </div>
             <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${
-                  existingPhotoCount + files.length > packageLimit ? 'bg-red-500'
-                    : existingPhotoCount + files.length === packageLimit ? 'bg-emerald-500'
-                    : 'bg-indigo-500'
-                }`}
-                style={{ width: `${Math.min(((existingPhotoCount + files.length) / packageLimit) * 100, 100)}%` }}
-              />
+              <div className={`h-full rounded-full transition-all duration-300 ${existingPhotoCount + files.length > packageLimit ? 'bg-red-500' : existingPhotoCount + files.length === packageLimit ? 'bg-emerald-500' : 'bg-indigo-500'}`}
+                style={{ width: `${Math.min(((existingPhotoCount + files.length) / packageLimit) * 100, 100)}%` }} />
             </div>
           </div>
         )}
-
-        {/* Over-limit warning */}
         {packageLimit && packageLimit > 0 && existingPhotoCount + files.length > packageLimit && (
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2.5 mb-3 flex items-start gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
-            <p className="text-[11px] text-red-300">
-              You have {existingPhotoCount + files.length - packageLimit} more image{existingPhotoCount + files.length - packageLimit !== 1 ? 's' : ''} than the package includes ({packageLimit}).
-              Remove some files or the extras won&apos;t be delivered.
-            </p>
+            <p className="text-[11px] text-red-300">You have {existingPhotoCount + files.length - packageLimit} more image{existingPhotoCount + files.length - packageLimit !== 1 ? 's' : ''} than the package includes ({packageLimit}). Remove some files or the extras won&apos;t be delivered.</p>
           </div>
         )}
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
+        <div onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}
           onClick={() => !uploading && fileInputRef.current?.click()}
-          className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${
-            dragOver
-              ? 'border-amber-500 bg-amber-500/5'
-              : files.length > 0
-              ? 'border-white/[0.08] bg-white/[0.02]'
-              : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.03]'
-          } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ACCEPTED_EXTENSIONS.join(',')}
-            onChange={(e) => e.target.files && addFiles(e.target.files)}
-            className="hidden"
-          />
-
+          className={`relative rounded-xl border-2 border-dashed transition-all cursor-pointer ${dragOver ? 'border-amber-500 bg-amber-500/5' : files.length > 0 ? 'border-white/[0.08] bg-white/[0.02]' : 'border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15] hover:bg-white/[0.03]'} ${uploading ? 'pointer-events-none opacity-60' : ''}`}>
+          <input ref={fileInputRef} type="file" multiple accept={ACCEPTED_EXTENSIONS.join(',')} onChange={(e) => e.target.files && addFiles(e.target.files)} className="hidden" />
           {files.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4">
-                <Upload className="w-6 h-6 text-amber-400" />
-              </div>
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4"><Upload className="w-6 h-6 text-amber-400" /></div>
               <p className="text-sm font-medium text-slate-200 mb-1">Drag & drop your photos here</p>
               <p className="text-xs text-slate-500 mb-3">or click to browse files</p>
-              <p className="text-[10px] text-slate-600">
-                Supports RAW formats (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2) + JPEG, PNG, TIFF · Max 100MB per file
-              </p>
+              <p className="text-[10px] text-slate-600">Supports RAW formats (CR2, CR3, NEF, ARW, DNG, RAF, ORF, RW2) + JPEG, PNG, TIFF · Max 100MB per file</p>
             </div>
           ) : (
             <div className="p-4">
@@ -522,56 +355,27 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                   <span className="text-slate-300 font-medium">{files.length} files</span>
                   <span className="text-slate-600">·</span>
                   <span className="text-slate-500">{formatFileSize(totalSize)}</span>
-                  {completedCount > 0 && (
-                    <>
-                      <span className="text-slate-600">·</span>
-                      <span className="text-emerald-400">{completedCount} uploaded</span>
-                    </>
-                  )}
-                  {errorCount > 0 && (
-                    <>
-                      <span className="text-slate-600">·</span>
-                      <span className="text-red-400">{errorCount} failed</span>
-                    </>
-                  )}
+                  {completedCount > 0 && <><span className="text-slate-600">·</span><span className="text-emerald-400">{completedCount} uploaded</span></>}
+                  {errorCount > 0 && <><span className="text-slate-600">·</span><span className="text-red-400">{errorCount} failed</span></>}
                 </div>
-                {!uploading && (
-                  <div className="flex items-center gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); clearAll(); }} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">
-                      Clear all
-                    </button>
-                  </div>
-                )}
+                {!uploading && <button onClick={(e) => { e.stopPropagation(); clearAll(); }} className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Clear all</button>}
               </div>
-
-              {/* File list */}
               <div className="max-h-48 overflow-y-auto space-y-1 pr-1" onClick={(e) => e.stopPropagation()}>
                 {files.map((f) => (
                   <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/[0.02] group">
-                    <ImageIcon className={`w-3.5 h-3.5 flex-shrink-0 ${
-                      f.status === 'complete' ? 'text-emerald-400' : f.status === 'error' ? 'text-red-400' : f.status === 'uploading' ? 'text-amber-400' : 'text-slate-600'
-                    }`} />
+                    <ImageIcon className={`w-3.5 h-3.5 flex-shrink-0 ${f.status === 'complete' ? 'text-emerald-400' : f.status === 'error' ? 'text-red-400' : f.status === 'uploading' ? 'text-amber-400' : 'text-slate-600'}`} />
                     <span className="text-[11px] text-slate-300 truncate flex-1 min-w-0">{f.file.name}</span>
                     <span className="text-[10px] text-slate-600 flex-shrink-0">{formatFileSize(f.file.size)}</span>
                     {f.status === 'complete' && <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />}
-                    {f.status === 'error' && (
-                      <span className="text-[10px] text-red-400 flex-shrink-0" title={f.error}><AlertCircle className="w-3 h-3" /></span>
-                    )}
+                    {f.status === 'error' && <span className="text-[10px] text-red-400 flex-shrink-0" title={f.error}><AlertCircle className="w-3 h-3" /></span>}
                     {f.status === 'uploading' && <Loader2 className="w-3 h-3 text-amber-400 animate-spin flex-shrink-0" />}
-                    {f.status === 'pending' && !uploading && (
-                      <button onClick={() => removeFile(f.id)} className="p-0.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
+                    {f.status === 'pending' && !uploading && <button onClick={() => removeFile(f.id)} className="p-0.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"><X className="w-3 h-3" /></button>}
                   </div>
                 ))}
               </div>
-
               {!uploading && !uploadComplete && (
                 <div className="flex items-center justify-center pt-3 border-t border-white/[0.04] mt-3">
-                  <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">
-                    + Add more files
-                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-xs text-amber-400 hover:text-amber-300 font-medium">+ Add more files</button>
                 </div>
               )}
             </div>
@@ -579,52 +383,36 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         </div>
       </div>
 
-      {/* Upload progress summary */}
       {uploading && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
           <div className="flex items-center gap-2 mb-2">
             <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
-            <span className="text-xs font-medium text-amber-300">
-              Uploading {completedCount} of {files.length}...
-            </span>
+            <span className="text-xs font-medium text-amber-300">Uploading {completedCount} of {files.length}...<span className="text-amber-400/50 ml-1">({CONCURRENT_UPLOADS} parallel)</span></span>
           </div>
           <div className="h-1.5 bg-amber-500/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-500 rounded-full transition-all duration-300"
-              style={{ width: `${files.length > 0 ? (completedCount / files.length) * 100 : 0}%` }}
-            />
+            <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${files.length > 0 ? (completedCount / files.length) * 100 : 0}%` }} />
           </div>
         </div>
       )}
 
-      {/* Complete message */}
       {uploadComplete && (
         <div className="space-y-2">
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 flex items-start gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-xs text-emerald-300 font-medium">Upload complete!</p>
-              <p className="text-[11px] text-emerald-400/60 mt-0.5">
-                {completedCount} photos uploaded. Job status changed to &quot;Editing&quot;.
-                {errorCount > 0 && ` ${errorCount} files failed — you can retry them.`}
-              </p>
+              <p className="text-[11px] text-emerald-400/60 mt-0.5">{completedCount} photos uploaded. Job status changed to &quot;Editing&quot;.{errorCount > 0 && ` ${errorCount} files failed — you can retry them.`}</p>
             </div>
           </div>
-
-          {/* AI Processing status */}
           {processingTriggered && !processingError && (
             <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 flex items-start gap-2">
               <Wand2 className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-xs text-indigo-300 font-medium">AI processing started</p>
-                <p className="text-[11px] text-amber-400/60 mt-0.5">
-                  {selectedStyleId ? 'Applying your style profile and processing all phases.' : 'Processing without style — analysis, composition, and output generation.'}
-                  {' '}Check the Processing Queue tab for live progress.
-                </p>
+                <p className="text-[11px] text-amber-400/60 mt-0.5">{selectedStyleId ? 'Applying your style profile and processing all phases.' : 'Processing without style — analysis, composition, and output generation.'} Check the Processing Queue tab for live progress.</p>
               </div>
             </div>
           )}
-
           {processingError && (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
@@ -638,39 +426,23 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
         </div>
       )}
 
-      {/* Action buttons */}
       <div className="flex items-center justify-end gap-2 pt-2">
         {uploadComplete ? (
-          <Button size="sm" onClick={clearAll}>
-            <Upload className="w-3 h-3" />Upload More
-          </Button>
+          <Button size="sm" onClick={clearAll}><Upload className="w-3 h-3" />Upload More</Button>
         ) : (
-          <Button
-            size="sm"
-            onClick={startUpload}
-            disabled={!selectedJob || files.length === 0 || uploading}
-          >
-            {uploading ? (
-              <><Loader2 className="w-3 h-3 animate-spin" />Uploading...</>
-            ) : (
-              <><Upload className="w-3 h-3" />Upload {files.length > 0 ? `${files.length} Photos` : 'Photos'}</>
-            )}
+          <Button size="sm" onClick={startUpload} disabled={!selectedJob || files.length === 0 || uploading}>
+            {uploading ? (<><Loader2 className="w-3 h-3 animate-spin" />Uploading...</>) : (<><Upload className="w-3 h-3" />Upload {files.length > 0 ? `${files.length} Photos` : 'Photos'}</>)}
           </Button>
         )}
       </div>
 
-      {/* Error modal — stays until dismissed */}
       {errorModalFiles.length > 0 && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
           <div className="bg-[#0c0c16] border border-red-500/20 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                <FileWarning className="w-5 h-5 text-red-400" />
-              </div>
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0"><FileWarning className="w-5 h-5 text-red-400" /></div>
               <div>
-                <h3 className="text-base font-bold text-white">
-                  {errorModalFiles.length} photo{errorModalFiles.length !== 1 ? 's' : ''} failed to upload
-                </h3>
+                <h3 className="text-base font-bold text-white">{errorModalFiles.length} photo{errorModalFiles.length !== 1 ? 's' : ''} failed to upload</h3>
                 <p className="text-xs text-slate-500">The remaining photos were uploaded successfully.</p>
               </div>
             </div>
@@ -682,20 +454,10 @@ export function PhotoUpload({ onUploadComplete }: PhotoUploadProps) {
                 </div>
               ))}
             </div>
-            <Button size="sm" className="w-full" onClick={() => { setErrorModalFiles([]); onUploadComplete(); }}>
-              OK
-            </Button>
+            <Button size="sm" className="w-full" onClick={() => { setErrorModalFiles([]); onUploadComplete(); }}>OK</Button>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-function CheckCircle({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
   );
 }
